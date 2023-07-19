@@ -23,7 +23,7 @@ executable haskell-json-schema-to-elm
     import:           warnings
     main-is:          Main.hs
     other-modules: Tango
-    hsc2hs-options: lol
+    -- hsc2hs-options: lol
     -- other-modules:    JsonSchemaObjectRef, JsonSchemaObject, JsonSchemaTypeEnum, Elm, Elm.Declaration, Elm.Expression, Elm.Import, Elm.Program, Elm.Type, Elm.Classes, Elm.GenError, JsonSchemaProcessed, Utils
     build-depends:    base
                     -- , aeson
@@ -37,4 +37,7 @@ executable haskell-json-schema-to-elm
                     -- , pretty-simple
                     -- , text-manipulate
     hs-source-dirs:   app
+    -- include-dirs: c_tango/src
+    -- hsc2hs-options: --cc g++ --lflag=-lstdc++
+    pkgconfig-depends: ctango
     default-language: Haskell2010

@@ -5,11 +5,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1681202837,
-        "narHash": "sha256-H+Rh19JDwRtpVPAWp64F+rlEtxUWBAQW28eAi3SRSzg=",
+        "lastModified": 1689068808,
+        "narHash": "sha256-6ixXo3wt24N/melDWjq70UuHQLxGV8jZvooRanIHXw0=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "cfacdce06f30d2b68473a46042957675eebb3401",
+        "rev": "919d646de7be200f3bf08cb76ae1f09402b6f9b4",
         "type": "github"
       },
       "original": {
@@ -114,18 +114,14 @@
         "poetry2nix": "poetry2nix"
       },
       "locked": {
-        "lastModified": 1689670870,
-        "narHash": "sha256-PKjSkMWuFrIw+2PWdO4B7fMb+F3D348oltzX3ud6GhU=",
-        "ref": "v9.4.2",
-        "rev": "67c08a1f56e0c614b5696f0a7a8e3d39f18c276d",
-        "revCount": 4,
+        "lastModified": 1689758721,
+        "narHash": "sha256-Qv9WH0ifAbXqwzpNcDJZujUMmwyAX0Jt8DsQ+3j6QoY=",
         "type": "git",
-        "url": "https://gitlab.desy.de/cfel-sc-public/tango-flake"
+        "url": "file:///home/pmidden/code/tango-flake"
       },
       "original": {
-        "ref": "v9.4.2",
         "type": "git",
-        "url": "https://gitlab.desy.de/cfel-sc-public/tango-flake"
+        "url": "file:///home/pmidden/code/tango-flake"
       }
     }
   },
