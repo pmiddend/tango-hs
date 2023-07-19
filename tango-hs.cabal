@@ -1,0 +1,40 @@
+cabal-version:      3.6
+name:               tango-hs
+version:            1.0.0
+-- synopsis:
+-- description:
+homepage:
+    https://gitlab.desy.de/cfel-sc-public/tango-hs
+
+license:            GPL-3.0-or-later
+license-file:       LICENSE
+author:             CFEL-SC
+maintainer:         sc@cfel.de
+-- copyright:
+category:           Text
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+executable haskell-json-schema-to-elm
+    import:           warnings
+    main-is:          Main.hs
+    other-modules: Tango
+    hsc2hs-options: lol
+    -- other-modules:    JsonSchemaObjectRef, JsonSchemaObject, JsonSchemaTypeEnum, Elm, Elm.Declaration, Elm.Expression, Elm.Import, Elm.Program, Elm.Type, Elm.Classes, Elm.GenError, JsonSchemaProcessed, Utils
+    build-depends:    base
+                    -- , aeson
+                    -- , containers
+                    -- , casing
+                    -- , mtl
+                    -- , pretty
+                    -- , text
+                    -- , bytestring
+                    -- , data-fix
+                    -- , pretty-simple
+                    -- , text-manipulate
+    hs-source-dirs:   app
+    default-language: Haskell2010
