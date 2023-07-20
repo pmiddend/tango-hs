@@ -38,6 +38,6 @@ executable haskell-json-schema-to-elm
                     -- , text-manipulate
     hs-source-dirs:   app
     -- include-dirs: c_tango/src
-    -- hsc2hs-options: --cc g++ --lflag=-lstdc++
+    hsc2hs-options: --cc g++ --lflag=-lstdc++
     pkgconfig-depends: ctango
     default-language: Haskell2010
