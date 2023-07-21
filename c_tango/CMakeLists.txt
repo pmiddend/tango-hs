@@ -23,6 +23,9 @@ configure_file(ctango.pc.in ctango.pc @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/ctango.pc"
         DESTINATION lib/pkgconfig)
 
+      add_executable(testprogram testprogram.cpp)
+      target_link_libraries(testprogram ctango)
+      install(TARGETS testprogram DESTINATION bin)
 
 install(TARGETS ctango DESTINATION lib)
 install(FILES "src/c_tango.h" DESTINATION include)

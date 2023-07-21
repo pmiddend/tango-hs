@@ -11,6 +11,7 @@
  ******************************************************************************/
 
 #include "c_tango.h"
+#include <iostream>
 
 ErrorStack *tango_translate_exception(Tango::DevFailed& tango_exception);
 static void convert_attribute_reading (Tango::DeviceAttribute& devattr, AttributeData *argout);
