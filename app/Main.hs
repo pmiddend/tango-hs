@@ -24,4 +24,4 @@ main = do
         attrReadResult <- tango_read_attribute proxyPtr attributeName argoutPtr
         argout' <- peek argoutPtr
         putStrLn ("read attribute" <> show attrReadResult)
-        putStrLn ("result " <> show (doubles argout'))
+        putStrLn ("result " <> show argout')
