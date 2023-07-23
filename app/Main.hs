@@ -3,8 +3,10 @@
 
 module Main where
 
+import qualified Data.Vector.Storable as V
 import Foreign (Storable (peek), alloca)
 import Foreign.C.String (withCString)
+import Foreign.Marshal (with)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import Tango
 
@@ -23,5 +25,11 @@ main = do
         hFlush stdout
         attrReadResult <- tango_read_attribute proxyPtr attributeName argoutPtr
         argout' <- peek argoutPtr
-        putStrLn ("read attribute" <> show attrReadResult)
+        putStrLn ("read attribute " <> show attrReadResult)
         putStrLn ("result " <> show argout')
+
+      with (HaskellAttributeData undefined undefined undefined (stringToVector "double_scalar") 1 0 HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
+        hPutStrLn stderr "writing attribute"
+        attrWriteResult <- tango_write_attribute proxyPtr argoutPtr
+        argout' <- peek argoutPtr
+        putStrLn ("read attribute " <> show attrWriteResult)

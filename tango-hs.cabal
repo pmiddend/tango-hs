@@ -26,6 +26,9 @@ executable haskell-json-schema-to-elm
     -- hsc2hs-options: lol
     -- other-modules:    JsonSchemaObjectRef, JsonSchemaObject, JsonSchemaTypeEnum, Elm, Elm.Declaration, Elm.Expression, Elm.Import, Elm.Program, Elm.Type, Elm.Classes, Elm.GenError, JsonSchemaProcessed, Utils
     build-depends:    base
+                    , vector
+                    , text
+                    
                     -- , aeson
                     -- , containers
                     -- , casing

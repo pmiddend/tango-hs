@@ -27,6 +27,11 @@ int main() {
   if (argout.data_type == 5) {
     std::cout << "read success result length: " << argout.attr_data.double_arr.length << "\n";
     std::cout << "double array: " << argout.attr_data.double_arr.sequence[0] << "\n";
+    std::cout << "dim x: " << argout.dim_x << "\n";
   }
+
+  argout.attr_data.double_arr.sequence[0] = 1337.0;
+  argout.attr_data.double_arr.length = 1;
+  tango_write_attribute(proxy, &argout);
   return 0;
 }
