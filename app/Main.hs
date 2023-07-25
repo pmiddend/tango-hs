@@ -28,7 +28,7 @@ main = do
         putStrLn ("read attribute " <> show attrReadResult)
         putStrLn ("result " <> show argout')
 
-      with (HaskellAttributeData undefined undefined undefined (stringToVector "double_scalar") 1 0 HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
+      with (HaskellAttributeData undefined undefined undefined (stringToVector "double_scalar") 1 0 undefined HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
         hPutStrLn stderr "writing attribute"
         attrWriteResult <- tango_write_attribute proxyPtr argoutPtr
         argout' <- peek argoutPtr

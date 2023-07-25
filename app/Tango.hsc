@@ -60,6 +60,23 @@ data HaskellDataFormat = HaskellScalar | HaskellSpectrum | HaskellImage deriving
 
 data HaskellDataQuality = HaskellValid | HaskellInvalid | HaskellAlarm | HaskellChanging | HaskellWarning  deriving(Show)
 
+data Timeval = Timeval {
+  -- Guesswork, not sure how to type it
+    tvSec :: CLong
+  , tvUsec :: CLong
+  } deriving(Show)
+
+instance Storable Timeval where
+  sizeOf _ = (#size timeval)
+  alignment _ = (#alignment timeval)
+  peek ptr = do
+    tvSec' <- (#peek timeval, tv_sec) ptr
+    tvUsec' <- (#peek timeval, tv_usec) ptr
+    pure (Timeval tvSec' tvUsec')
+  poke ptr (Timeval tvSec' tvUsec') = do
+    (#poke timeval, tv_sec) ptr tvSec'
+    (#poke timeval, tv_usec) ptr tvUsec'
+
 data HaskellAttributeData = HaskellAttributeData
   { dataFormat :: HaskellDataFormat
   , dataQuality :: HaskellDataQuality
@@ -67,6 +84,7 @@ data HaskellAttributeData = HaskellAttributeData
   , name :: V.Vector CChar
   , dimX :: Int32
   , dimY :: Int32
+  , timeStamp :: Timeval
   , dataType :: HaskellTangoDataType
   , tangoAttributeData :: HaskellTangoAttributeData
   } deriving(Show)
@@ -100,6 +118,7 @@ instance Storable HaskellAttributeData where
     nb_read' <- (#peek AttributeData, nb_read) ptr
     quality' <- (#peek AttributeData, quality) ptr
     data_format' <- (#peek AttributeData, data_format) ptr
+    time_stamp' <- (#peek AttributeData, time_stamp) ptr
     let withoutType = HaskellAttributeData
                       (formatToHaskell data_format')
                       (qualityToHaskell quality')
@@ -107,6 +126,7 @@ instance Storable HaskellAttributeData where
                       (V.fromList (castCharToCChar <$> nameAsCString))
                       dim_x'
                       dim_y'
+                      time_stamp'
     case data_type' :: CInt of
       5 -> do
         attr_data' :: HaskellVarDoubleArray <- (#peek AttributeData, attr_data) ptr

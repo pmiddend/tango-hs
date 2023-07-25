@@ -294,7 +294,7 @@ typedef struct {
     char *name;
     int32_t dim_x;
     int32_t dim_y;
-    struct timeval time_stamp;
+ struct timeval time_stamp;
 } AttributeData;
 
 typedef struct {
