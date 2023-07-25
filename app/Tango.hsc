@@ -1,11 +1,15 @@
 {-# LANGUAGE CPP                         #-}
+{-# LANGUAGE DeriveFunctor                         #-}
+{-# LANGUAGE DeriveFoldable                         #-}
+{-# LANGUAGE DeriveTraversable                         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Tango where
 
-import Foreign(Storable(peek, poke, alignment, sizeOf), pokeByteOff, peekArray, peekByteOff)
-import Foreign.C.String(peekCString, CString, castCharToCChar)
+import Foreign(Storable(peek, poke, alignment, sizeOf), pokeByteOff, peekArray, peekByteOff, free)
+import Foreign.C.String(peekCString, CString, castCharToCChar, newCString)
 import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong, CUInt, CChar)
 import Data.Word(Word64, Word32)
+import Control.Exception(bracket)
 import Data.Int(Int32)
 import Foreign.Ptr(Ptr)
 import System.IO (hFlush, stdout, hPutStrLn, stderr)
@@ -19,18 +23,34 @@ import qualified Data.Vector.Storable as V
 
 type TangoDataType = CInt
 
+data HaskellTangoCommandData = HaskellCommandDouble CDouble
+                             | HaskellCommandString (V.Vector CChar)
+                               deriving(Show)
+
 data HaskellTangoAttributeData = HaskellDoubleArray HaskellVarDoubleArray
                                | HaskellBoolArray HaskellVarBoolArray
+                               | HaskellStringArray HaskellVarStringArray
                                deriving(Show)
 
 newDoubleArray :: [CDouble] -> HaskellTangoAttributeData
 newDoubleArray = HaskellDoubleArray . HaskellVarDoubleArray . V.fromList
 
-data HaskellTangoDataType = HaskellDevBoolean | HaskellDevDouble | HaskellUnknown deriving(Show)
+withStringArray :: [String] -> (V.Vector CString -> IO b) -> IO b
+withStringArray strings =
+  let retrieveStrings = V.fromList <$> traverse newCString strings
+      destroyStrings = traverse free . V.toList
+  in bracket retrieveStrings destroyStrings
+
+data HaskellTangoDataType = HaskellDevBoolean
+                          | HaskellDevDouble
+                          | HaskellDevString
+                          | HaskellUnknown
+                          deriving(Show)
 
 dataTypeFromHaskell :: HaskellTangoDataType -> CInt
 dataTypeFromHaskell HaskellDevBoolean = 1
 dataTypeFromHaskell HaskellDevDouble = 5
+dataTypeFromHaskell HaskellDevString = 8
 dataTypeFromHaskell _ = 10
 
 stringToVector :: String -> V.Vector CChar
@@ -49,6 +69,11 @@ data HaskellAttributeData = HaskellAttributeData
   , dimY :: Int32
   , dataType :: HaskellTangoDataType
   , tangoAttributeData :: HaskellTangoAttributeData
+  } deriving(Show)
+
+data HaskellCommandData = HaskellCommandData
+  { argType :: HaskellTangoDataType
+  , tangoCommandData :: HaskellTangoCommandData
   } deriving(Show)
 
 qualityToHaskell :: CInt -> HaskellDataQuality
@@ -89,6 +114,9 @@ instance Storable HaskellAttributeData where
       1 -> do
         attr_data' :: HaskellVarBoolArray <- (#peek AttributeData, attr_data) ptr
         pure (withoutType HaskellDevBoolean (HaskellBoolArray attr_data'))
+      8 -> do
+        attr_data' :: HaskellVarStringArray <- (#peek AttributeData, attr_data) ptr
+        pure (withoutType HaskellDevString (HaskellStringArray attr_data'))
       _ -> error "shit"
   poke ptr haskellAttributeData = do
     hPutStrLn stderr "poking x"
@@ -102,22 +130,49 @@ instance Storable HaskellAttributeData where
       HaskellDoubleArray doubles -> do
         hPutStrLn stderr "poking doubles"
         (#poke AttributeData, attr_data) ptr doubles
+      HaskellStringArray strings -> do
+        hPutStrLn stderr "poking strings"
+        (#poke AttributeData, attr_data) ptr strings
       _ -> pure ()
       
+instance Storable HaskellCommandData where
+  sizeOf _ = (#{size CommandData})
+  alignment _ = (#alignment CommandData)
+  peek ptr = do
+    data_type' <- (#peek CommandData, arg_type) ptr
+    case data_type' :: CInt of
+      5 -> do
+        cmd_data' :: CDouble <- (#peek CommandData, cmd_data) ptr
+        pure (HaskellCommandData HaskellDevDouble (HaskellCommandDouble cmd_data'))
+      8 -> do
+        cmd_data' :: CString <- (#peek CommandData, cmd_data) ptr
+        real_string <- peekCString cmd_data'
+        pure (HaskellCommandData HaskellDevString (HaskellCommandString (V.fromList (castCharToCChar <$> real_string))))
+      _ -> error "shit"
+  poke ptr haskellCommandData = do
+    (#poke CommandData, arg_type) ptr (dataTypeFromHaskell (argType haskellCommandData))
+    case tangoCommandData haskellCommandData of
+      HaskellCommandDouble double -> do
+        hPutStrLn stderr "poking double"
+        (#poke CommandData, cmd_data) ptr double
+      HaskellCommandString charVector -> do
+        hPutStrLn stderr "poking string"
+        V.unsafeWith charVector ((#poke CommandData, cmd_data) ptr)
+      _ -> pure ()
 
-data HaskellDevFailed = HaskellDevFailed
-  { devFailedDesc :: CString,
-    devFailedReason :: CString,
-    devFailedOrigin :: CString,
+data HaskellDevFailed a = HaskellDevFailed
+  { devFailedDesc :: a,
+    devFailedReason :: a,
+    devFailedOrigin :: a,
     devFailedSeverity :: CInt
-  }
+  } deriving(Functor, Foldable, Traversable)
 
 data HaskellErrorStack = HaskellErrorStack
   { errorStackLength :: Word32,
-    errorStackSequence :: Ptr HaskellDevFailed
+    errorStackSequence :: Ptr (HaskellDevFailed CString)
   }
 
-instance Storable HaskellDevFailed where
+instance Storable a => Storable (HaskellDevFailed a) where
   sizeOf _ = (#size ErrorStack)
   alignment _ = (#alignment ErrorStack)
   peek ptr = do
@@ -137,6 +192,10 @@ newtype HaskellVarDoubleArray = HaskellVarDoubleArray {
   
 newtype HaskellVarBoolArray = HaskellVarBoolArray {
     bools :: V.Vector CBool
+  } deriving(Show)
+
+newtype HaskellVarStringArray = HaskellVarStringArray {
+    strings :: V.Vector CString
   } deriving(Show)
 
 instance Storable HaskellVarDoubleArray where
@@ -169,6 +228,22 @@ instance Storable HaskellVarBoolArray where
         len = fromIntegral (V.length content)
     (#poke VarBoolArray, length) ptr len
     V.unsafeWith content $ \vptr -> (#poke VarBoolArray, sequence) ptr vptr
+
+instance Storable HaskellVarStringArray where
+  sizeOf _ = (#size VarStringArray)
+  alignment _ = (#alignment VarStringArray)
+  peek ptr = do
+    length :: CULong <- (#peek VarStringArray, length) ptr
+    sequence <- (#peek VarStringArray, sequence) ptr
+    -- FIXME: we could use a custom peekArray for Vectors to be faster possibly?
+    haskellSequence <- peekArray (fromIntegral length) sequence
+    pure (HaskellVarStringArray (V.fromList haskellSequence))
+  poke ptr (HaskellVarStringArray content) = do
+    hPutStrLn stderr "poking varstringarray"
+    let len :: Word32
+        len = fromIntegral (V.length content)
+    (#poke VarStringArray, length) ptr len
+    V.unsafeWith content $ \vptr -> (#poke VarStringArray, sequence) ptr vptr
   
 
 foreign import ccall unsafe "c_tango.h tango_create_device_proxy"
@@ -179,3 +254,6 @@ foreign import ccall unsafe "c_tango.h tango_read_attribute"
 
 foreign import ccall unsafe "c_tango.h tango_write_attribute"
      tango_write_attribute :: Ptr () -> Ptr HaskellAttributeData -> IO (Ptr HaskellErrorStack)
+
+foreign import ccall unsafe "c_tango.h tango_command_inout"
+     tango_command_inout :: Ptr () -> CString -> Ptr HaskellCommandData -> Ptr HaskellCommandData -> IO (Ptr HaskellErrorStack)

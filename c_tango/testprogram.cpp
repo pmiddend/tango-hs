@@ -15,7 +15,7 @@ int main() {
   std::cout << "device proxy created\n";
 
   AttributeData argout;
-  ErrorStack *read_result = tango_read_attribute(proxy, "double_scalar", &argout);
+  ErrorStack *read_result = tango_read_attribute(proxy, "string_scalar", &argout);
   
   if (read_result) {
     std::cout << "read error result length: " << result->length << "\n";
@@ -24,14 +24,14 @@ int main() {
 
   std::cout << "read sucessful, data type: " << argout.data_type << "\n";
 
-  if (argout.data_type == 5) {
-    std::cout << "read success result length: " << argout.attr_data.double_arr.length << "\n";
-    std::cout << "double array: " << argout.attr_data.double_arr.sequence[0] << "\n";
+  if (argout.data_type == 8) {
+    std::cout << "read success result length: " << argout.attr_data.string_arr.length << "\n";
+    std::cout << "string array, first element: " << argout.attr_data.string_arr.sequence[0] << "\n";
     std::cout << "dim x: " << argout.dim_x << "\n";
   }
 
-  argout.attr_data.double_arr.sequence[0] = 1337.0;
-  argout.attr_data.double_arr.length = 1;
-  tango_write_attribute(proxy, &argout);
+  // argout.attr_data.double_arr.sequence[0] = 1337.0;
+  // argout.attr_data.double_arr.length = 1;
+  // tango_write_attribute(proxy, &argout);
   return 0;
 }
