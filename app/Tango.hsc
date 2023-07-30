@@ -10,6 +10,8 @@ module Tango(tango_create_device_proxy,
              tango_command_inout,
              tango_free_AttributeData,
              tango_free_CommandData,
+             tango_set_timeout_millis,
+             tango_get_timeout_millis,
              HaskellErrorStack(..),
              HaskellDevFailed(..),
              HaskellAttributeData(..),
@@ -23,7 +25,7 @@ module Tango(tango_create_device_proxy,
 
 import Foreign(Storable(peek, poke, alignment, sizeOf), pokeByteOff, peekArray, peekByteOff)
 import Foreign.C.String(peekCString, CString, castCharToCChar)
-import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong, CChar)
+import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong, CChar, CInt(CInt))
 import Data.Word(Word32)
 import Data.Int(Int32)
 import Foreign.Ptr(Ptr)
@@ -297,4 +299,10 @@ foreign import ccall unsafe "c_tango.h tango_free_AttributeData"
 
 foreign import ccall unsafe "c_tango.h tango_free_CommandData"
      tango_free_CommandData :: Ptr HaskellCommandData -> IO ()
+
+foreign import ccall unsafe "c_tango.h tango_set_timeout_millis"
+     tango_set_timeout_millis :: Ptr () -> CInt -> IO (Ptr HaskellErrorStack)
+
+foreign import ccall unsafe "c_tango.h tango_get_timeout_millis"
+     tango_get_timeout_millis :: Ptr () -> Ptr CInt -> IO (Ptr HaskellErrorStack)
 

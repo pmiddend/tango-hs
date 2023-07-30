@@ -3,7 +3,7 @@
 
 module Main where
 
-import Control.Monad (void)
+import Control.Monad (void, when)
 import qualified Data.Vector.Storable as V
 import Foreign
   ( Storable (peek),
@@ -11,10 +11,12 @@ import Foreign
   )
 import Foreign.C.String (withCString)
 import Foreign.Marshal (with)
+import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import Tango
   ( HaskellAttributeData (HaskellAttributeData),
     HaskellCommandData (HaskellCommandData),
+    HaskellErrorStack,
     HaskellTangoCommandData (HaskellCommandDouble, HaskellCommandString),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
     newDoubleArray,
@@ -24,17 +26,31 @@ import Tango
     tango_delete_device_proxy,
     tango_free_AttributeData,
     tango_free_CommandData,
+    tango_get_timeout_millis,
     tango_read_attribute,
+    tango_set_timeout_millis,
     tango_write_attribute,
   )
+
+checkResult :: IO (Ptr HaskellErrorStack) -> IO ()
+checkResult action = do
+  es <- action
+  when (es /= nullPtr) (fail "error")
 
 main :: IO ()
 main = do
   putStrLn "creating proxy"
   alloca $ \proxyPtrPtr -> withCString "sys/tg_test/1" $ \proxyName -> do
-    result <- tango_create_device_proxy proxyName proxyPtrPtr
+    checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
     proxyPtr <- peek proxyPtrPtr
-    putStrLn ("got proxy " <> show result <> " lol")
+    putStrLn "got proxy"
+
+    putStrLn "setting timeout to 1337ms"
+    checkResult (tango_set_timeout_millis proxyPtr 1337)
+    alloca $ \millisPtr -> do
+      checkResult (tango_get_timeout_millis proxyPtr millisPtr)
+      millis <- peek millisPtr
+      putStrLn ("millis are " <> show millis)
 
     with (HaskellCommandData HaskellDevDouble (HaskellCommandDouble 3.0)) $ \arginPtr ->
       alloca $ \argoutPtr -> withCString "DevDouble" $ \cmdName -> do
