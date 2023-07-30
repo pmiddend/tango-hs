@@ -3,7 +3,7 @@
 
 module Main where
 
-import Control.Monad (void, when)
+import Control.Monad (forM_, void, when)
 import qualified Data.Vector.Storable as V
 import Foreign
   ( Storable (peek),
@@ -16,17 +16,23 @@ import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import Tango
   ( HaskellAttributeData (HaskellAttributeData),
     HaskellCommandData (HaskellCommandData),
+    HaskellCommandInfoList (commandInfos),
+    HaskellDataFormat (..),
+    HaskellDataQuality (..),
     HaskellErrorStack,
     HaskellTangoCommandData (HaskellCommandDouble, HaskellCommandString),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
+    Timeval (Timeval),
     haskellDevSourceDev,
     newDoubleArray,
     stringToVector,
     tango_command_inout,
+    tango_command_list_query,
     tango_create_device_proxy,
     tango_delete_device_proxy,
     tango_free_AttributeData,
     tango_free_CommandData,
+    tango_free_CommandInfoList,
     tango_get_source,
     tango_get_timeout_millis,
     tango_is_locked,
@@ -99,6 +105,14 @@ main = do
       source <- peek sourcePtr
       putStrLn ("source is " <> show source)
 
+    putStrLn "listing commands"
+    alloca $ \commandInfoListPtr -> do
+      checkResult (tango_command_list_query proxyPtr commandInfoListPtr)
+      commandInfoList <- peek commandInfoListPtr
+      forM_ (V.toList (commandInfos commandInfoList)) $ \ci -> do
+        hPutStrLn stderr ("info list element: " <> show ci)
+      tango_free_CommandInfoList commandInfoListPtr
+
     with (HaskellCommandData HaskellDevDouble (HaskellCommandDouble 3.0)) $ \arginPtr ->
       alloca $ \argoutPtr -> withCString "DevDouble" $ \cmdName -> do
         hPutStrLn stderr "executing command"
@@ -127,7 +141,7 @@ main = do
         putStrLn ("result " <> show argout')
         tango_free_AttributeData argoutPtr
 
-      with (HaskellAttributeData undefined undefined undefined (stringToVector "double_scalar") 1 0 undefined HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
+      with (HaskellAttributeData HaskellScalar HaskellValid 0 (stringToVector "double_scalar") 1 0 (Timeval 0 0) HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
         hPutStrLn stderr "writing attribute"
         attrWriteResult <- tango_write_attribute proxyPtr argoutPtr
         _ <- peek argoutPtr

@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP                         #-}
+{-# LANGUAGE BangPatterns                         #-}
 {-# LANGUAGE DeriveFunctor                         #-}
 {-# LANGUAGE DeriveFoldable                         #-}
 {-# LANGUAGE DeriveTraversable                         #-}
@@ -11,10 +12,17 @@ module Tango(tango_create_device_proxy,
              tango_free_AttributeData,
              tango_free_CommandData,
              tango_set_timeout_millis,
+             HaskellDataFormat(..),
+             HaskellDataQuality(..),
+             Timeval(..),
              tango_get_timeout_millis,
              tango_set_source,
+             tango_command_list_query,
+             tango_free_CommandInfoList,
              tango_get_source,
              tango_lock,
+             haskellDisplayLevelExpert,
+             haskellDisplayLevelOperator,
              tango_unlock,
              tango_is_locked,
              tango_locking_status,
@@ -29,6 +37,7 @@ module Tango(tango_create_device_proxy,
              HaskellCommandData(..),
              HaskellTangoDataType(HaskellDevBoolean, HaskellDevDouble, HaskellDevString),
              HaskellTangoCommandData(HaskellCommandDouble, HaskellCommandString),
+             HaskellCommandInfoList(..),
              HaskellTangoAttributeData(..),
              newDoubleArray,
              stringToVector
@@ -57,13 +66,13 @@ haskellDevSourceCache = 1
 haskellDevSourceCacheDev :: CInt
 haskellDevSourceCacheDev = 2
   
-data HaskellTangoCommandData = HaskellCommandDouble CDouble
-                             | HaskellCommandString (V.Vector CChar)
+data HaskellTangoCommandData = HaskellCommandDouble !CDouble
+                             | HaskellCommandString !(V.Vector CChar)
                                deriving(Show)
 
-data HaskellTangoAttributeData = HaskellDoubleArray HaskellVarDoubleArray
-                               | HaskellBoolArray HaskellVarBoolArray
-                               | HaskellStringArray HaskellVarStringArray
+data HaskellTangoAttributeData = HaskellDoubleArray !HaskellVarDoubleArray
+                               | HaskellBoolArray !HaskellVarBoolArray
+                               | HaskellStringArray !HaskellVarStringArray
                                deriving(Show)
 
 newDoubleArray :: [CDouble] -> HaskellTangoAttributeData
@@ -90,14 +99,22 @@ dataTypeFromHaskell _ = 10
 stringToVector :: String -> V.Vector CChar
 stringToVector s = V.fromList (castCharToCChar <$> s)
 
-data HaskellDataFormat = HaskellScalar | HaskellSpectrum | HaskellImage deriving(Show)
+data HaskellDataFormat = HaskellScalar
+                       | HaskellSpectrum
+                       | HaskellImage
+                       deriving(Show)
 
-data HaskellDataQuality = HaskellValid | HaskellInvalid | HaskellAlarm | HaskellChanging | HaskellWarning  deriving(Show)
+data HaskellDataQuality = HaskellValid
+                        | HaskellInvalid
+                        | HaskellAlarm
+                        | HaskellChanging
+                        | HaskellWarning
+                        deriving(Show)
 
 data Timeval = Timeval {
   -- Guesswork, not sure how to type it
-    tvSec :: CLong
-  , tvUsec :: CLong
+    tvSec :: !CLong
+  , tvUsec :: !CLong
   } deriving(Show)
 
 instance Storable Timeval where
@@ -112,21 +129,72 @@ instance Storable Timeval where
     (#poke timeval, tv_usec) ptr tvUsec'
 
 data HaskellAttributeData = HaskellAttributeData
-  { dataFormat :: HaskellDataFormat
-  , dataQuality :: HaskellDataQuality
-  , nbRead :: CLong
-  , name :: V.Vector CChar
-  , dimX :: Int32
-  , dimY :: Int32
-  , timeStamp :: Timeval
-  , dataType :: HaskellTangoDataType
-  , tangoAttributeData :: HaskellTangoAttributeData
+  { dataFormat :: !HaskellDataFormat
+  , dataQuality :: !HaskellDataQuality
+  , nbRead :: !CLong
+  , name :: !(V.Vector CChar)
+  , dimX :: !Int32
+  , dimY :: !Int32
+  , timeStamp :: !Timeval
+  , dataType :: !HaskellTangoDataType
+  , tangoAttributeData :: !HaskellTangoAttributeData
   } deriving(Show)
 
 data HaskellCommandData = HaskellCommandData
-  { argType :: HaskellTangoDataType
-  , tangoCommandData :: HaskellTangoCommandData
+  { argType :: !HaskellTangoDataType
+  , tangoCommandData :: !HaskellTangoCommandData
   } deriving(Show)
+
+haskellDisplayLevelOperator :: CInt
+haskellDisplayLevelOperator = 0
+
+haskellDisplayLevelExpert :: CInt
+haskellDisplayLevelExpert = 1
+
+data HaskellCommandInfo = HaskellCommandInfo
+  { cmdName :: !(V.Vector CChar)
+  , cmdTag :: !Int32
+  , cmdInType :: !Int32
+  , cmdOutType :: !Int32
+  , cmdInTypeDesc :: !(V.Vector CChar)
+  , cmdOutTypeDesc :: !(V.Vector CChar)
+  , cmdDisplayLevel :: !CInt
+  } deriving(Show)
+
+cStringToVector :: CString -> IO (V.Vector CChar)
+cStringToVector cstr = do
+  asString <- peekCString cstr
+  pure (V.fromList (castCharToCChar <$> asString))
+
+instance Storable HaskellCommandInfo where
+  sizeOf _ = (#{size CommandInfo})
+  alignment _ = (#alignment CommandInfo)
+  peek ptr = do
+    hPutStrLn stderr "peeking begin"
+    cmd_name' <- (#peek CommandInfo, cmd_name) ptr
+    hPutStrLn stderr ("name peeking finished " <> show cmd_name')
+    cmdNameAsVector <- cStringToVector cmd_name'
+    hPutStrLn stderr "as vector"
+    cmd_tag' <- (#peek CommandInfo, cmd_tag) ptr
+    in_type' <- (#peek CommandInfo, in_type) ptr
+    out_type' <- (#peek CommandInfo, out_type) ptr
+    in_type_desc' <- (#peek CommandInfo, in_type_desc) ptr
+    inTypeDescAsVector <- cStringToVector in_type_desc'
+    out_type_desc' <- (#peek CommandInfo, out_type_desc) ptr
+    outTypeDescAsVector <- cStringToVector out_type_desc'
+    disp_level' <- (#peek CommandInfo, disp_level) ptr
+    hPutStrLn stderr "peeking end"
+    pure (HaskellCommandInfo cmdNameAsVector cmd_tag' in_type' out_type' inTypeDescAsVector outTypeDescAsVector disp_level')
+  -- I see no reason why we'd ever poke this (i.e. write an info struct)
+  poke ptr (HaskellCommandInfo cmd_name' cmd_tag' in_type' out_type' in_type_desc' out_type_desc' disp_level') = do
+    V.unsafeWith cmd_name' ((#poke CommandInfo, cmd_name) ptr)
+    (#poke CommandInfo, cmd_tag) ptr cmd_tag'
+    (#poke CommandInfo, in_type) ptr in_type'
+    (#poke CommandInfo, out_type) ptr out_type'
+    V.unsafeWith in_type_desc' ((#poke CommandInfo, in_type_desc) ptr)
+    V.unsafeWith out_type_desc' ((#poke CommandInfo, out_type_desc) ptr)
+    (#poke CommandInfo, disp_level) ptr disp_level'
+    
 
 qualityToHaskell :: CInt -> HaskellDataQuality
 qualityToHaskell 0 = HaskellValid
@@ -148,7 +216,7 @@ instance Storable HaskellAttributeData where
     dim_x' <- (#peek AttributeData, dim_x) ptr
     dim_y' <- (#peek AttributeData, dim_y) ptr
     name' <- (#peek AttributeData, name) ptr
-    nameAsCString <- peekCString name'
+    nameAsVector <- cStringToVector name'
     nb_read' <- (#peek AttributeData, nb_read) ptr
     quality' <- (#peek AttributeData, quality) ptr
     data_format' <- (#peek AttributeData, data_format) ptr
@@ -157,7 +225,7 @@ instance Storable HaskellAttributeData where
                       (formatToHaskell data_format')
                       (qualityToHaskell quality')
                       nb_read'
-                      (V.fromList (castCharToCChar <$> nameAsCString))
+                      nameAsVector
                       dim_x'
                       dim_y'
                       time_stamp'
@@ -214,15 +282,15 @@ instance Storable HaskellCommandData where
         V.unsafeWith charVector ((#poke CommandData, cmd_data) ptr)
 
 data HaskellDevFailed a = HaskellDevFailed
-  { devFailedDesc :: a,
-    devFailedReason :: a,
-    devFailedOrigin :: a,
-    devFailedSeverity :: CInt
+  { devFailedDesc :: !a,
+    devFailedReason :: !a,
+    devFailedOrigin :: !a,
+    devFailedSeverity :: !CInt
   } deriving(Functor, Foldable, Traversable)
 
 data HaskellErrorStack = HaskellErrorStack
-  { errorStackLength :: Word32,
-    errorStackSequence :: Ptr (HaskellDevFailed CString)
+  { errorStackLength :: !Word32,
+    errorStackSequence :: !(Ptr (HaskellDevFailed CString))
   }
 
 instance Storable a => Storable (HaskellDevFailed a) where
@@ -247,6 +315,29 @@ newtype HaskellVarBoolArray = HaskellVarBoolArray {
     bools :: V.Vector CBool
   } deriving(Show)
 
+newtype HaskellCommandInfoList = HaskellCommandInfoList {
+    commandInfos :: V.Vector HaskellCommandInfo
+  } deriving(Show)
+
+instance Storable HaskellCommandInfoList where
+  sizeOf _ = (#size CommandInfoList)
+  alignment _ = (#alignment CommandInfoList)
+  peek ptr = do
+    length' :: CULong <- (#peek CommandInfoList, length) ptr
+    sequence' <- (#peek CommandInfoList, sequence) ptr
+    haskellSequence <- peekArray (fromIntegral length') sequence'
+    hPutStrLn stderr ("haskell list (length " <> show (length haskellSequence) <> "): " <> show haskellSequence)
+    let vector = V.fromList haskellSequence
+    hPutStrLn stderr ("vector: " <> show vector)
+    pure (HaskellCommandInfoList vector)
+  poke ptr (HaskellCommandInfoList content) = do
+    hPutStrLn stderr "poking command info list"
+    let len :: Word32
+        len = fromIntegral (V.length content)
+    (#poke CommandInfoList, length) ptr len
+    V.unsafeWith content $ \vptr -> (#poke CommandInfoList, sequence) ptr vptr
+
+
 newtype HaskellVarStringArray = HaskellVarStringArray {
     strings :: V.Vector CString
   } deriving(Show)
@@ -263,7 +354,7 @@ instance Storable HaskellVarDoubleArray where
     let len :: Word32
         len = fromIntegral (V.length content)
     (#poke VarDoubleArray, length) ptr len
-    V.unsafeWith content $ \vptr -> (#poke VarBoolArray, sequence) ptr vptr
+    V.unsafeWith content $ \vptr -> (#poke VarDoubleArray, sequence) ptr vptr
     
 
 instance Storable HaskellVarBoolArray where
@@ -347,4 +438,10 @@ foreign import ccall unsafe "c_tango.h tango_is_locked_by_me"
 
 foreign import ccall unsafe "c_tango.h tango_locking_status"
      tango_locking_status :: DeviceProxyPtr -> Ptr CString -> IO (Ptr HaskellErrorStack)
+
+foreign import ccall unsafe "c_tango.h tango_command_list_query"
+     tango_command_list_query :: DeviceProxyPtr -> Ptr HaskellCommandInfoList -> IO (Ptr HaskellErrorStack)
+
+foreign import ccall unsafe "c_tango.h tango_free_CommandInfoList"
+     tango_free_CommandInfoList :: Ptr HaskellCommandInfoList -> IO ()
 
