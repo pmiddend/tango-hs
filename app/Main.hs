@@ -19,6 +19,7 @@ import Tango
     HaskellErrorStack,
     HaskellTangoCommandData (HaskellCommandDouble, HaskellCommandString),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
+    haskellDevSourceDev,
     newDoubleArray,
     stringToVector,
     tango_command_inout,
@@ -26,8 +27,10 @@ import Tango
     tango_delete_device_proxy,
     tango_free_AttributeData,
     tango_free_CommandData,
+    tango_get_source,
     tango_get_timeout_millis,
     tango_read_attribute,
+    tango_set_source,
     tango_set_timeout_millis,
     tango_write_attribute,
   )
@@ -51,6 +54,15 @@ main = do
       checkResult (tango_get_timeout_millis proxyPtr millisPtr)
       millis <- peek millisPtr
       putStrLn ("millis are " <> show millis)
+
+    putStrLn "setting source"
+    checkResult (tango_set_source proxyPtr haskellDevSourceDev)
+
+    putStrLn "getting source"
+    alloca $ \sourcePtr -> do
+      checkResult (tango_get_source proxyPtr sourcePtr)
+      source <- peek sourcePtr
+      putStrLn ("source is " <> show source)
 
     with (HaskellCommandData HaskellDevDouble (HaskellCommandDouble 3.0)) $ \arginPtr ->
       alloca $ \argoutPtr -> withCString "DevDouble" $ \cmdName -> do

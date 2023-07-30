@@ -12,6 +12,11 @@ module Tango(tango_create_device_proxy,
              tango_free_CommandData,
              tango_set_timeout_millis,
              tango_get_timeout_millis,
+             tango_set_source,
+             tango_get_source,
+             haskellDevSourceDev,
+             haskellDevSourceCache,
+             haskellDevSourceCacheDev,
              HaskellErrorStack(..),
              HaskellDevFailed(..),
              HaskellAttributeData(..),
@@ -37,6 +42,15 @@ import qualified Data.Vector.Storable as V
 -- Taken from https://github.com/ifesdjeen/haskell-ffi-tutorial/blob/d93f5354177ec69fcc937803695d07c3b8121bd3/src/Example.hsc
 -- #let alignment t = "%lu", (unsigned long)offsetof(struct {char x__; t (y__); }, y__)
 
+haskellDevSourceDev :: CInt
+haskellDevSourceDev = 0
+
+haskellDevSourceCache :: CInt
+haskellDevSourceCache = 1
+
+haskellDevSourceCacheDev :: CInt
+haskellDevSourceCacheDev = 2
+  
 data HaskellTangoCommandData = HaskellCommandDouble CDouble
                              | HaskellCommandString (V.Vector CChar)
                                deriving(Show)
@@ -305,4 +319,10 @@ foreign import ccall unsafe "c_tango.h tango_set_timeout_millis"
 
 foreign import ccall unsafe "c_tango.h tango_get_timeout_millis"
      tango_get_timeout_millis :: Ptr () -> Ptr CInt -> IO (Ptr HaskellErrorStack)
+
+foreign import ccall unsafe "c_tango.h tango_set_source"
+     tango_set_source :: Ptr () -> CInt -> IO (Ptr HaskellErrorStack)
+
+foreign import ccall unsafe "c_tango.h tango_get_source"
+     tango_get_source :: Ptr () -> Ptr CInt -> IO (Ptr HaskellErrorStack)
 
