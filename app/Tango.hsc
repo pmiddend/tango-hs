@@ -17,6 +17,7 @@ module Tango(tango_create_device_proxy,
              tango_lock,
              tango_unlock,
              tango_is_locked,
+             tango_locking_status,
              tango_is_locked_by_me,
              DeviceProxyPtr,
              haskellDevSourceDev,
@@ -343,4 +344,7 @@ foreign import ccall unsafe "c_tango.h tango_is_locked"
 
 foreign import ccall unsafe "c_tango.h tango_is_locked_by_me"
      tango_is_locked_by_me :: DeviceProxyPtr -> Ptr Bool -> IO (Ptr HaskellErrorStack)
+
+foreign import ccall unsafe "c_tango.h tango_locking_status"
+     tango_locking_status :: DeviceProxyPtr -> Ptr CString -> IO (Ptr HaskellErrorStack)
 

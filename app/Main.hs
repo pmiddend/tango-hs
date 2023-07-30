@@ -9,8 +9,8 @@ import Foreign
   ( Storable (peek),
     alloca,
   )
-import Foreign.C.String (withCString)
-import Foreign.Marshal (with)
+import Foreign.C.String (peekCString, withCString)
+import Foreign.Marshal (free, with)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import Tango
@@ -32,6 +32,7 @@ import Tango
     tango_is_locked,
     tango_is_locked_by_me,
     tango_lock,
+    tango_locking_status,
     tango_read_attribute,
     tango_set_source,
     tango_set_timeout_millis,
@@ -69,8 +70,8 @@ main = do
       print bool
       putStrLn "locked by me?"
       checkResult (tango_is_locked_by_me proxyPtr boolPtr)
-      bool <- peek boolPtr
-      print bool
+      bool' <- peek boolPtr
+      print bool'
 
     putStrLn "unlocking"
     checkResult (tango_unlock proxyPtr)
@@ -80,6 +81,14 @@ main = do
       checkResult (tango_is_locked proxyPtr boolPtr)
       bool <- peek boolPtr
       print bool
+
+    putStrLn "retrieving locking status"
+    alloca $ \strPtrPtr -> do
+      checkResult (tango_locking_status proxyPtr strPtrPtr)
+      strPtr <- peek strPtrPtr
+      haskellStr <- peekCString strPtr
+      putStrLn ("status: " <> haskellStr)
+      free strPtr
 
     putStrLn "setting source"
     checkResult (tango_set_source proxyPtr haskellDevSourceDev)
