@@ -29,9 +29,13 @@ import Tango
     tango_free_CommandData,
     tango_get_source,
     tango_get_timeout_millis,
+    tango_is_locked,
+    tango_is_locked_by_me,
+    tango_lock,
     tango_read_attribute,
     tango_set_source,
     tango_set_timeout_millis,
+    tango_unlock,
     tango_write_attribute,
   )
 
@@ -54,6 +58,28 @@ main = do
       checkResult (tango_get_timeout_millis proxyPtr millisPtr)
       millis <- peek millisPtr
       putStrLn ("millis are " <> show millis)
+
+    putStrLn "locking"
+    checkResult (tango_lock proxyPtr)
+
+    putStrLn "locked?"
+    alloca $ \boolPtr -> do
+      checkResult (tango_is_locked proxyPtr boolPtr)
+      bool <- peek boolPtr
+      print bool
+      putStrLn "locked by me?"
+      checkResult (tango_is_locked_by_me proxyPtr boolPtr)
+      bool <- peek boolPtr
+      print bool
+
+    putStrLn "unlocking"
+    checkResult (tango_unlock proxyPtr)
+
+    putStrLn "locked after unlocking?"
+    alloca $ \boolPtr -> do
+      checkResult (tango_is_locked proxyPtr boolPtr)
+      bool <- peek boolPtr
+      print bool
 
     putStrLn "setting source"
     checkResult (tango_set_source proxyPtr haskellDevSourceDev)
