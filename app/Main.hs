@@ -22,6 +22,7 @@ import Tango
     HaskellErrorStack,
     HaskellTangoCommandData (HaskellCommandDouble, HaskellCommandString),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
+    HaskellVarStringArray (strings),
     Timeval (Timeval),
     haskellDevSourceDev,
     newDoubleArray,
@@ -33,6 +34,7 @@ import Tango
     tango_free_AttributeData,
     tango_free_CommandData,
     tango_free_CommandInfoList,
+    tango_get_attribute_list,
     tango_get_source,
     tango_get_timeout_millis,
     tango_is_locked,
@@ -129,6 +131,15 @@ main = do
         hPutStrLn stderr ("executed command: " <> show commandResult)
         argOut <- peek argoutPtr
         hPutStrLn stderr ("result: " <> show argOut)
+
+    alloca $ \stringArrayPtr -> do
+      checkResult (tango_get_attribute_list proxyPtr stringArrayPtr)
+      stringArray <- peek stringArrayPtr
+      hPutStrLn stderr "begin attribute list"
+      forM_ (V.toList (strings stringArray)) $ \cstring -> do
+        str <- peekCString cstring
+        hPutStrLn stderr ("attribute list: " <> str)
+      hPutStrLn stderr "end attribute list"
 
     withCString "double_scalar" $ \attributeName -> do
       hPutStrLn stderr "before with"

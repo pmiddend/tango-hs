@@ -12,7 +12,9 @@ module Tango(tango_create_device_proxy,
              tango_free_AttributeData,
              tango_free_CommandData,
              tango_set_timeout_millis,
+             tango_get_attribute_list,
              HaskellDataFormat(..),
+             HaskellVarStringArray(..),
              HaskellDataQuality(..),
              Timeval(..),
              tango_get_timeout_millis,
@@ -382,29 +384,29 @@ instance Storable HaskellVarStringArray where
     -- FIXME: we could use a custom peekArray for Vectors to be faster possibly?
     haskellSequence <- peekArray (fromIntegral length') sequence'
     pure (HaskellVarStringArray (V.fromList haskellSequence))
-  poke ptr (HaskellVarStringArray content) = do
-    hPutStrLn stderr "poking varstringarray"
+  poke ptr ( HaskellVarStringArray content) = do
     let len :: Word32
         len = fromIntegral (V.length content)
     (#poke VarStringArray, length) ptr len
     V.unsafeWith content $ \vptr -> (#poke VarStringArray, sequence) ptr vptr
 
 type DeviceProxyPtr = Ptr ()
+type TangoError = Ptr HaskellErrorStack
 
 foreign import ccall unsafe "c_tango.h tango_create_device_proxy"
-     tango_create_device_proxy :: CString -> Ptr DeviceProxyPtr -> IO (Ptr HaskellErrorStack)
+     tango_create_device_proxy :: CString -> Ptr DeviceProxyPtr -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_delete_device_proxy"
-     tango_delete_device_proxy :: DeviceProxyPtr -> IO (Ptr HaskellErrorStack)
+     tango_delete_device_proxy :: DeviceProxyPtr -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_read_attribute"
-     tango_read_attribute :: DeviceProxyPtr -> CString -> Ptr HaskellAttributeData -> IO (Ptr HaskellErrorStack)
+     tango_read_attribute :: DeviceProxyPtr -> CString -> Ptr HaskellAttributeData -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_write_attribute"
-     tango_write_attribute :: DeviceProxyPtr -> Ptr HaskellAttributeData -> IO (Ptr HaskellErrorStack)
+     tango_write_attribute :: DeviceProxyPtr -> Ptr HaskellAttributeData -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_command_inout"
-     tango_command_inout :: DeviceProxyPtr -> CString -> Ptr HaskellCommandData -> Ptr HaskellCommandData -> IO (Ptr HaskellErrorStack)
+     tango_command_inout :: DeviceProxyPtr -> CString -> Ptr HaskellCommandData -> Ptr HaskellCommandData -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_free_AttributeData"
      tango_free_AttributeData :: Ptr HaskellAttributeData -> IO ()
@@ -413,35 +415,38 @@ foreign import ccall unsafe "c_tango.h tango_free_CommandData"
      tango_free_CommandData :: Ptr HaskellCommandData -> IO ()
 
 foreign import ccall unsafe "c_tango.h tango_set_timeout_millis"
-     tango_set_timeout_millis :: DeviceProxyPtr -> CInt -> IO (Ptr HaskellErrorStack)
+     tango_set_timeout_millis :: DeviceProxyPtr -> CInt -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_get_timeout_millis"
-     tango_get_timeout_millis :: DeviceProxyPtr -> Ptr CInt -> IO (Ptr HaskellErrorStack)
+     tango_get_timeout_millis :: DeviceProxyPtr -> Ptr CInt -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_set_source"
-     tango_set_source :: DeviceProxyPtr -> CInt -> IO (Ptr HaskellErrorStack)
+     tango_set_source :: DeviceProxyPtr -> CInt -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_get_source"
-     tango_get_source :: DeviceProxyPtr -> Ptr CInt -> IO (Ptr HaskellErrorStack)
+     tango_get_source :: DeviceProxyPtr -> Ptr CInt -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_lock"
-     tango_lock :: DeviceProxyPtr -> IO (Ptr HaskellErrorStack)
+     tango_lock :: DeviceProxyPtr -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_unlock"
-     tango_unlock :: DeviceProxyPtr -> IO (Ptr HaskellErrorStack)
+     tango_unlock :: DeviceProxyPtr -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_is_locked"
-     tango_is_locked :: DeviceProxyPtr -> Ptr Bool -> IO (Ptr HaskellErrorStack)
+     tango_is_locked :: DeviceProxyPtr -> Ptr Bool -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_is_locked_by_me"
-     tango_is_locked_by_me :: DeviceProxyPtr -> Ptr Bool -> IO (Ptr HaskellErrorStack)
+     tango_is_locked_by_me :: DeviceProxyPtr -> Ptr Bool -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_locking_status"
-     tango_locking_status :: DeviceProxyPtr -> Ptr CString -> IO (Ptr HaskellErrorStack)
+     tango_locking_status :: DeviceProxyPtr -> Ptr CString -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_command_list_query"
-     tango_command_list_query :: DeviceProxyPtr -> Ptr HaskellCommandInfoList -> IO (Ptr HaskellErrorStack)
+     tango_command_list_query :: DeviceProxyPtr -> Ptr HaskellCommandInfoList -> IO TangoError
 
 foreign import ccall unsafe "c_tango.h tango_free_CommandInfoList"
      tango_free_CommandInfoList :: Ptr HaskellCommandInfoList -> IO ()
+
+foreign import ccall unsafe "c_tango.h tango_get_attribute_list"
+     tango_get_attribute_list :: DeviceProxyPtr -> Ptr HaskellVarStringArray -> IO TangoError
 
