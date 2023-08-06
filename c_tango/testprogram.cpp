@@ -30,6 +30,9 @@ int main() {
     std::cout << "dim x: " << argout.dim_x << "\n";
   }
 
+  VarStringArray vsa;
+  AttributeInfoList ail;
+  ErrorStack *read_result_new = tango_get_attribute_config(proxy, &vsa, &ail);
   // argout.attr_data.double_arr.sequence[0] = 1337.0;
   // argout.attr_data.double_arr.length = 1;
   // tango_write_attribute(proxy, &argout);

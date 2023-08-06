@@ -3,28 +3,33 @@
 
 module Main where
 
+import Control.Exception (bracket)
 import Control.Monad (forM_, void, when)
 import qualified Data.Vector.Storable as V
 import Foreign
   ( Storable (peek),
     alloca,
   )
-import Foreign.C.String (peekCString, withCString)
-import Foreign.Marshal (free, with)
+import Foreign.C.String (CString, newCString, peekCString, withCString)
+import Foreign.Marshal (free, peekArray, with)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import Tango
   ( HaskellAttributeData (HaskellAttributeData),
+    HaskellAttributeInfoList (..),
     HaskellCommandData (HaskellCommandData),
     HaskellCommandInfoList (commandInfos),
     HaskellDataFormat (..),
     HaskellDataQuality (..),
-    HaskellErrorStack,
+    HaskellDevFailed (..),
+    HaskellDevSource (..),
+    HaskellErrorStack (..),
+    HaskellTangoAttributeData (HaskellStringArray),
     HaskellTangoCommandData (HaskellCommandDouble, HaskellCommandString),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
-    HaskellVarStringArray (strings),
+    HaskellVarStringArray (HaskellVarStringArray, strings),
     Timeval (Timeval),
-    haskellDevSourceDev,
+    devSourceToInt,
     newDoubleArray,
     stringToVector,
     tango_command_inout,
@@ -34,6 +39,8 @@ import Tango
     tango_free_AttributeData,
     tango_free_CommandData,
     tango_free_CommandInfoList,
+    tango_free_VarStringArray,
+    tango_get_attribute_config,
     tango_get_attribute_list,
     tango_get_source,
     tango_get_timeout_millis,
@@ -51,7 +58,20 @@ import Tango
 checkResult :: IO (Ptr HaskellErrorStack) -> IO ()
 checkResult action = do
   es <- action
-  when (es /= nullPtr) (fail "error")
+  when (es /= nullPtr) $ do
+    errorStack <- peek es
+    stackItems <- peekArray (fromIntegral (errorStackLength errorStack)) (errorStackSequence errorStack)
+    hPutStrLn stderr ("peeked " <> show (errorStackLength errorStack) <> " stack items")
+    -- TODO: This can be simplified by using the Traversable instance of HaskellDevFailed to go from CString to String
+    let formatDevFailed :: HaskellDevFailed CString -> IO String
+        formatDevFailed (HaskellDevFailed desc reason origin severity) = do
+          desc' <- peekCString desc
+          reason' <- peekCString reason
+          origin' <- peekCString origin
+          hPutStrLn stderr ("description: " <> show desc' <> ", reason: " <> reason' <> ", origin: " <> origin')
+          pure ("description: " <> show desc' <> ", reason: " <> reason' <> ", origin: " <> origin')
+    errorLines <- traverse formatDevFailed stackItems
+    fail ("error in result: " <> unlines errorLines)
 
 main :: IO ()
 main = do
@@ -99,7 +119,7 @@ main = do
       free strPtr
 
     putStrLn "setting source"
-    checkResult (tango_set_source proxyPtr haskellDevSourceDev)
+    checkResult (tango_set_source proxyPtr (devSourceToInt Dev))
 
     putStrLn "getting source"
     alloca $ \sourcePtr -> do
@@ -132,14 +152,34 @@ main = do
         argOut <- peek argoutPtr
         hPutStrLn stderr ("result: " <> show argOut)
 
-    alloca $ \stringArrayPtr -> do
+    attributeNames <- alloca $ \stringArrayPtr -> do
       checkResult (tango_get_attribute_list proxyPtr stringArrayPtr)
       stringArray <- peek stringArrayPtr
       hPutStrLn stderr "begin attribute list"
-      forM_ (V.toList (strings stringArray)) $ \cstring -> do
-        str <- peekCString cstring
-        hPutStrLn stderr ("attribute list: " <> str)
+      haskellStrings <- traverse peekCString (V.toList (strings stringArray))
+      forM_ haskellStrings (\str -> hPutStrLn stderr ("attribute list: " <> str))
+      -- forM_ (V.toList (strings stringArray)) $ \cstring -> do
+      --   str <- peekCString cstring
+      --   hPutStrLn stderr ("attribute list: " <> str)
       hPutStrLn stderr "end attribute list"
+      tango_free_VarStringArray stringArrayPtr
+      pure haskellStrings
+
+    hPutStrLn stderr ("attribute names: " <> show attributeNames)
+    bracket (traverse newCString attributeNames) (traverse free) $ \attributeNamesCStrings ->
+      with (HaskellVarStringArray (V.fromList attributeNamesCStrings)) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
+        checkResult (tango_get_attribute_config proxyPtr stringArrayPtr attributeInfoListPtr)
+        stringArray <- peek stringArrayPtr
+        hPutStrLn stderr "begin attribute config list, names"
+        forM_ (V.toList (strings stringArray)) $ \cstring -> do
+          str <- peekCString cstring
+          hPutStrLn stderr ("attribute config list: " <> str)
+        hPutStrLn stderr "end attribute config list, names"
+        infos <- peek attributeInfoListPtr
+        hPutStrLn stderr "begin attribute config list, attributes"
+        forM_ (V.toList (attributeInfos infos)) $ \info -> do
+          hPutStrLn stderr ("attribute config info: " <> show info)
+        hPutStrLn stderr "end attribute config list, attributes"
 
     withCString "double_scalar" $ \attributeName -> do
       hPutStrLn stderr "before with"
