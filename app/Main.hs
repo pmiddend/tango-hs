@@ -16,6 +16,7 @@ import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import Tango
   ( HaskellAttributeData (HaskellAttributeData),
+    HaskellAttributeDataList (..),
     HaskellAttributeInfoList (..),
     HaskellCommandData (HaskellCommandData),
     HaskellCommandInfoList (commandInfos),
@@ -34,7 +35,9 @@ import Tango
     stringToVector,
     tango_command_inout,
     tango_command_list_query,
+    tango_create_database_proxy,
     tango_create_device_proxy,
+    tango_delete_database_proxy,
     tango_delete_device_proxy,
     tango_free_AttributeData,
     tango_free_CommandData,
@@ -49,6 +52,7 @@ import Tango
     tango_lock,
     tango_locking_status,
     tango_read_attribute,
+    tango_read_attributes,
     tango_set_source,
     tango_set_timeout_millis,
     tango_unlock,
@@ -197,5 +201,22 @@ main = do
         attrWriteResult <- tango_write_attribute proxyPtr argoutPtr
         _ <- peek argoutPtr
         putStrLn ("read attribute " <> show attrWriteResult)
+
+    let attributesToQuery :: [String]
+        attributesToQuery = ["double_scalar"]
+
+    bracket (traverse newCString attributesToQuery) (traverse free) $ \attributeNamesCStrings ->
+      with (HaskellVarStringArray (V.fromList attributeNamesCStrings)) $ \attributeNames -> alloca $ \dataListPtr -> do
+        checkResult (tango_read_attributes proxyPtr attributeNames dataListPtr)
+        hPutStrLn stderr "begin attribute data list"
+        dataList <- peek dataListPtr
+        forM_ (V.toList (attributeDatas dataList)) $ \data' -> do
+          hPutStrLn stderr ("attribute data info: " <> show data')
+        hPutStrLn stderr "end attribute data list"
+
+    alloca $ \dbProxyPtr -> do
+      checkResult (tango_create_database_proxy dbProxyPtr)
+      dbProxy <- peek dbProxyPtr
+      checkResult (tango_delete_database_proxy dbProxy)
 
     void (tango_delete_device_proxy proxyPtr)

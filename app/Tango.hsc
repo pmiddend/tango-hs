@@ -13,12 +13,16 @@ module Tango(tango_create_device_proxy,
              tango_free_AttributeData,
              tango_free_CommandData,
              tango_set_timeout_millis,
+             tango_create_database_proxy,
+             tango_delete_database_proxy,
              tango_free_VarStringArray,
              tango_get_attribute_list,
+             tango_read_attributes,
              HaskellDataFormat(..),
              HaskellVarStringArray(..),
              HaskellDataQuality(..),
              HaskellAttributeInfoList(..),
+             HaskellAttributeDataList(..),
              Timeval(..),
              tango_get_timeout_millis,
              tango_set_source,
@@ -522,6 +526,25 @@ instance Storable HaskellAttributeInfoList where
     (#poke AttributeInfoList, length) ptr len
     V.unsafeWith content $ \vptr -> (#poke AttributeInfoList, sequence) ptr vptr
 
+newtype HaskellAttributeDataList = HaskellAttributeDataList {
+    attributeDatas :: V.Vector HaskellAttributeData
+  } deriving(Show)
+
+instance Storable HaskellAttributeDataList where
+  sizeOf _ = (#size AttributeDataList)
+  alignment _ = (#alignment AttributeDataList)
+  peek ptr = do
+    length' :: CULong <- (#peek AttributeDataList, length) ptr
+    sequence' <- (#peek AttributeDataList, sequence) ptr
+    haskellSequence <- peekArray (fromIntegral length') sequence'
+    let vector = V.fromList haskellSequence
+    pure (HaskellAttributeDataList vector)
+  poke ptr (HaskellAttributeDataList content) = do
+    let len :: Word32
+        len = fromIntegral (V.length content)
+    (#poke AttributeDataList, length) ptr len
+    V.unsafeWith content $ \vptr -> (#poke AttributeDataList, sequence) ptr vptr
+
 
 instance Storable HaskellVarDoubleArray where
   sizeOf _ = (#size VarDoubleArray)
@@ -638,4 +661,13 @@ foreign import ccall unsafe "c_tango.h tango_get_attribute_list"
 
 foreign import ccall unsafe "c_tango.h tango_get_attribute_config"
      tango_get_attribute_config :: DeviceProxyPtr -> Ptr HaskellVarStringArray -> Ptr HaskellAttributeInfoList -> IO TangoError
+
+foreign import ccall unsafe "c_tango.h tango_read_attributes"
+     tango_read_attributes :: DeviceProxyPtr -> Ptr HaskellVarStringArray -> Ptr HaskellAttributeDataList -> IO TangoError
+
+foreign import ccall unsafe "c_tango.h tango_create_database_proxy"
+     tango_create_database_proxy :: Ptr DeviceProxyPtr -> IO TangoError
+
+foreign import ccall unsafe "c_tango.h tango_delete_database_proxy"
+     tango_delete_database_proxy :: DeviceProxyPtr -> IO TangoError
 
