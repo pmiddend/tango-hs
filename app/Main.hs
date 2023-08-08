@@ -46,6 +46,7 @@ import Tango
     tango_get_attribute_config,
     tango_get_attribute_list,
     tango_get_device_exported,
+    tango_get_device_exported_for_class,
     tango_get_source,
     tango_get_timeout_millis,
     tango_is_locked,
@@ -224,7 +225,10 @@ main = do
           hPutStrLn stderr "getting db datum"
           checkResult (tango_get_device_exported dbProxy filterStr dbDatumPtr)
           dbDatum <- peek dbDatumPtr
-          hPutStrLn stderr ("db datum: " <> show dbDatum)
+          hPutStrLn stderr ("db datum for name filter: " <> show dbDatum)
+          checkResult (tango_get_device_exported_for_class dbProxy filterStr dbDatumPtr)
+          dbDatum' <- peek dbDatumPtr
+          hPutStrLn stderr ("db datum for class filter: " <> show dbDatum')
 
       checkResult (tango_delete_database_proxy dbProxy)
 
