@@ -18,6 +18,7 @@ module Tango(tango_create_device_proxy,
              tango_free_VarStringArray,
              tango_get_attribute_list,
              tango_read_attributes,
+             tango_get_device_exported,
              HaskellDataFormat(..),
              HaskellVarStringArray(..),
              HaskellDataQuality(..),
@@ -95,6 +96,11 @@ data HaskellTangoCommandData = HaskellCommandDouble !CDouble
 data HaskellTangoAttributeData = HaskellDoubleArray !HaskellVarDoubleArray
                                | HaskellBoolArray !HaskellVarBoolArray
                                | HaskellStringArray !HaskellVarStringArray
+                               deriving(Show)
+
+data HaskellTangoPropertyData =  HaskellPropDoubleArray !HaskellVarDoubleArray
+                               | HaskellPropBoolArray !HaskellVarBoolArray
+                               | HaskellPropStringArray !HaskellVarStringArray
                                deriving(Show)
 
 newDoubleArray :: [CDouble] -> HaskellTangoAttributeData
@@ -304,6 +310,13 @@ instance Storable HaskellAttributeInfo where
     V.unsafeWith writableAttrName' ((#poke AttributeInfo, writable_attr_name) ptr)
     (#poke AttributeInfo, disp_level) ptr dispLevel'
   
+data HaskellDbDatum = HaskellDbDatum
+  { dbDatumPropertyName :: !VectorCString
+  , dbDatumIsEmpty :: !Bool
+  , dbDatumWrongDataType :: !Bool
+  , dbDatumDataType :: !HaskellTangoDataType
+  , dbDatumPropData :: !HaskellTangoPropertyData
+  } deriving(Show)
 
 data HaskellAttributeData = HaskellAttributeData
   { dataFormat :: !HaskellDataFormat
@@ -375,6 +388,40 @@ qualityToHaskell 1 = HaskellInvalid
 qualityToHaskell 2 = HaskellAlarm
 qualityToHaskell 3 = HaskellChanging
 qualityToHaskell _ = HaskellWarning
+
+instance Storable HaskellDbDatum where
+  sizeOf _ = (#{size DbDatum})
+  alignment _ = (#alignment DbDatum)
+  peek ptr = do
+    property_name' <- (#peek DbDatum, property_name) ptr
+    propertyNameAsVector <- cStringToVector property_name'
+    data_type' <- (#peek DbDatum, data_type) ptr
+    is_empty' <- (#peek DbDatum, is_empty) ptr
+    wrong_data_type' <- (#peek DbDatum, wrong_data_type) ptr
+    let withoutType = HaskellDbDatum
+                      propertyNameAsVector
+                      is_empty'
+                      wrong_data_type'
+    case data_type' of
+      HaskellDevVarBooleanArray -> do
+        prop_data' :: HaskellVarBoolArray <- (#peek DbDatum, prop_data) ptr
+        pure (withoutType HaskellDevBoolean (HaskellPropBoolArray prop_data'))
+      HaskellDevVarStringArray -> do
+        prop_data' :: HaskellVarStringArray <- (#peek DbDatum, prop_data) ptr
+        pure (withoutType HaskellDevString (HaskellPropStringArray prop_data'))
+      _ -> error ("not supported data type: " <> show data_type')
+  poke ptr haskellDbDatum = do
+    V.unsafeWith (dbDatumPropertyName haskellDbDatum) $ \namePtr -> (#poke DbDatum, property_name) ptr namePtr
+    (#poke DbDatum, is_empty) ptr (dbDatumIsEmpty haskellDbDatum)
+    (#poke DbDatum, wrong_data_type) ptr (dbDatumWrongDataType haskellDbDatum)
+    (#poke DbDatum, data_type) ptr (dbDatumDataType haskellDbDatum)
+    case dbDatumPropData haskellDbDatum of
+      HaskellPropDoubleArray doubles' -> do
+        (#poke DbDatum, prop_data) ptr doubles'
+      HaskellPropStringArray strings' -> do
+        (#poke DbDatum, prop_data) ptr strings'
+      _ -> pure ()
+
 
 instance Storable HaskellAttributeData where
   sizeOf _ = (#{size AttributeData})
@@ -670,4 +717,7 @@ foreign import ccall unsafe "c_tango.h tango_create_database_proxy"
 
 foreign import ccall unsafe "c_tango.h tango_delete_database_proxy"
      tango_delete_database_proxy :: DeviceProxyPtr -> IO TangoError
+
+foreign import ccall unsafe "c_tango.h tango_get_device_exported"
+     tango_get_device_exported :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
 

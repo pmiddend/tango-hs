@@ -45,6 +45,7 @@ import Tango
     tango_free_VarStringArray,
     tango_get_attribute_config,
     tango_get_attribute_list,
+    tango_get_device_exported,
     tango_get_source,
     tango_get_timeout_millis,
     tango_is_locked,
@@ -216,7 +217,15 @@ main = do
 
     alloca $ \dbProxyPtr -> do
       checkResult (tango_create_database_proxy dbProxyPtr)
+
       dbProxy <- peek dbProxyPtr
+      alloca $ \dbDatumPtr -> do
+        withCString "*" $ \filterStr -> do
+          hPutStrLn stderr "getting db datum"
+          checkResult (tango_get_device_exported dbProxy filterStr dbDatumPtr)
+          dbDatum <- peek dbDatumPtr
+          hPutStrLn stderr ("db datum: " <> show dbDatum)
+
       checkResult (tango_delete_database_proxy dbProxy)
 
     void (tango_delete_device_proxy proxyPtr)
