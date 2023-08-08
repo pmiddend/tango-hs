@@ -15,6 +15,8 @@ module Tango(tango_create_device_proxy,
              tango_set_timeout_millis,
              tango_create_database_proxy,
              tango_delete_database_proxy,
+             tango_get_object_list,
+             tango_get_object_property_list,
              tango_free_VarStringArray,
              tango_get_attribute_list,
              tango_read_attributes,
@@ -724,4 +726,10 @@ foreign import ccall unsafe "c_tango.h tango_get_device_exported"
 
 foreign import ccall unsafe "c_tango.h tango_get_device_exported_for_class"
      tango_get_device_exported_for_class :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
+
+foreign import ccall unsafe "c_tango.h tango_get_object_list"
+     tango_get_object_list :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
+
+foreign import ccall unsafe "c_tango.h tango_get_object_property_list"
+     tango_get_object_property_list :: DeviceProxyPtr -> CString -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
