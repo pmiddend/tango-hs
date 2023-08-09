@@ -26,7 +26,7 @@ import Tango
     HaskellDevSource (..),
     HaskellErrorStack (..),
     HaskellTangoAttributeData (HaskellAttributeDataStringArray),
-    HaskellTangoCommandData (HaskellCommandDouble, HaskellCommandString),
+    HaskellTangoCommandData (HaskellCommandCString, HaskellCommandDouble),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
     HaskellTangoVarArray (HaskellTangoVarArray, varArrayValues),
     Timeval (Timeval),
