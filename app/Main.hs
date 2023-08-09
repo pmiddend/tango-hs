@@ -25,10 +25,10 @@ import Tango
     HaskellDevFailed (..),
     HaskellDevSource (..),
     HaskellErrorStack (..),
-    HaskellTangoAttributeData (HaskellStringArray),
+    HaskellTangoAttributeData (HaskellAttributeDataStringArray),
     HaskellTangoCommandData (HaskellCommandDouble, HaskellCommandString),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
-    HaskellVarStringArray (HaskellVarStringArray, strings),
+    HaskellTangoVarArray (HaskellTangoVarArray, varArrayValues),
     Timeval (Timeval),
     devSourceToInt,
     newDoubleArray,
@@ -49,6 +49,7 @@ import Tango
     tango_get_device_exported_for_class,
     tango_get_object_list,
     tango_get_object_property_list,
+    tango_get_property,
     tango_get_source,
     tango_get_timeout_millis,
     tango_is_locked,
@@ -164,7 +165,7 @@ main = do
       checkResult (tango_get_attribute_list proxyPtr stringArrayPtr)
       stringArray <- peek stringArrayPtr
       hPutStrLn stderr "begin attribute list"
-      haskellStrings <- traverse peekCString (V.toList (strings stringArray))
+      haskellStrings <- traverse peekCString (V.toList (varArrayValues stringArray))
       forM_ haskellStrings (\str -> hPutStrLn stderr ("attribute list: " <> str))
       -- forM_ (V.toList (strings stringArray)) $ \cstring -> do
       --   str <- peekCString cstring
@@ -175,11 +176,11 @@ main = do
 
     hPutStrLn stderr ("attribute names: " <> show attributeNames)
     bracket (traverse newCString attributeNames) (traverse free) $ \attributeNamesCStrings ->
-      with (HaskellVarStringArray (V.fromList attributeNamesCStrings)) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
+      with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
         checkResult (tango_get_attribute_config proxyPtr stringArrayPtr attributeInfoListPtr)
         stringArray <- peek stringArrayPtr
         hPutStrLn stderr "begin attribute config list, names"
-        forM_ (V.toList (strings stringArray)) $ \cstring -> do
+        forM_ (V.toList (varArrayValues stringArray)) $ \cstring -> do
           str <- peekCString cstring
           hPutStrLn stderr ("attribute config list: " <> str)
         hPutStrLn stderr "end attribute config list, names"
@@ -210,7 +211,7 @@ main = do
         attributesToQuery = ["double_scalar"]
 
     bracket (traverse newCString attributesToQuery) (traverse free) $ \attributeNamesCStrings ->
-      with (HaskellVarStringArray (V.fromList attributeNamesCStrings)) $ \attributeNames -> alloca $ \dataListPtr -> do
+      with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \attributeNames -> alloca $ \dataListPtr -> do
         checkResult (tango_read_attributes proxyPtr attributeNames dataListPtr)
         hPutStrLn stderr "begin attribute data list"
         dataList <- peek dataListPtr
@@ -237,6 +238,11 @@ main = do
           checkResult (tango_get_object_property_list dbProxy filterStr filterStr dbDatumPtr)
           dbDatum''' <- peek dbDatumPtr
           hPutStrLn stderr ("db get object property list: " <> show dbDatum''')
+
+          alloca $ \dbDataPtr -> do
+            checkResult (tango_get_property dbProxy filterStr dbDataPtr)
+            dbData <- peek dbDataPtr
+            hPutStrLn stderr ("db get property data: " <> show dbData)
 
       checkResult (tango_delete_database_proxy dbProxy)
 

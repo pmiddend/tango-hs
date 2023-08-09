@@ -19,26 +19,13 @@ extra-doc-files:    CHANGELOG.md
 common warnings
     ghc-options: -Wall
 
-executable haskell-json-schema-to-elm
+executable tango-hs-testprogram
     import:           warnings
     main-is:          Main.hs
     other-modules: Tango
-    -- hsc2hs-options: lol
-    -- other-modules:    JsonSchemaObjectRef, JsonSchemaObject, JsonSchemaTypeEnum, Elm, Elm.Declaration, Elm.Expression, Elm.Import, Elm.Program, Elm.Type, Elm.Classes, Elm.GenError, JsonSchemaProcessed, Utils
     build-depends:    base
                     , vector
                     , text
-                    
-                    -- , aeson
-                    -- , containers
-                    -- , casing
-                    -- , mtl
-                    -- , pretty
-                    -- , text
-                    -- , bytestring
-                    -- , data-fix
-                    -- , pretty-simple
-                    -- , text-manipulate
     hs-source-dirs:   app
     -- include-dirs: c_tango/src
     hsc2hs-options: --cc g++ --lflag=-lstdc++ -k
