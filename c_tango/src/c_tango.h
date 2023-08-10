@@ -19,8 +19,7 @@
 #include <stdbool.h>
 #endif
 
-#ifdef RUST_BINDGEN
-/* Don't pull in tango.h for bindgen, these are the fixed sizes anyway. */
+#ifdef HASKELL_BINDGEN
 typedef int32_t TangoDevLong;
 typedef uint32_t TangoDevULong;
 typedef int64_t TangoDevLong64;
@@ -68,7 +67,10 @@ typedef enum {
     DEVVAR_LONG64ARRAY,
     DEVVAR_ULONG64ARRAY,
     DEV_INT,
-    DEV_ENCODED
+    DEV_ENCODED,
+    DEV_ENUM,
+    DEVVAR_STATEARRAY = 31,
+    DEVVAR_ENCODEDARRAY = 32
 } TangoDataType;
 
 typedef enum {
@@ -348,6 +350,8 @@ typedef struct {
     char *max_alarm;
     char *writable_attr_name;
     DispLevel disp_level;
+    char **enum_labels;
+    uint16_t enum_labels_count;
 } AttributeInfo;
 
 typedef struct {

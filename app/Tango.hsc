@@ -63,12 +63,13 @@ module Tango(tango_create_device_proxy,
              HaskellCommandInfoList(..),
              HaskellTangoAttributeData(..),
              devSourceToInt,
+             devSourceFromInt,
              newDoubleArray,
              stringToVector
              ) where
 
 import Foreign(Storable(peek, poke, alignment, sizeOf), pokeByteOff, peekArray, peekByteOff)
-import Foreign.C.String(peekCString, CString, castCharToCChar)
+import Foreign.C.String(peekCString, CString, castCharToCChar, castCCharToChar)
 import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong, CChar, CInt(CInt), CShort, CUInt, CUShort, CFloat)
 import Data.Word(Word32, Word8, Word64)
 import Data.Int(Int32)
@@ -99,6 +100,13 @@ instance Storable HaskellTangoDevState where
   peek = peekBounded "dev state"
   poke = pokeBounded "dev state"
 
+newtype ShowableCString = ShowableCString {
+    unShowable :: VectorCString
+  }
+
+instance Show ShowableCString where
+  show (ShowableCString cs) = show (castCCharToChar <$> V.toList cs)
+
 
 data HaskellDevSource = Dev
                       | Cache
@@ -109,6 +117,11 @@ devSourceToInt :: HaskellDevSource -> CInt
 devSourceToInt Dev = 0
 devSourceToInt Cache = 1
 devSourceToInt CacheDev = 2
+
+devSourceFromInt :: CInt -> HaskellDevSource
+devSourceFromInt 0 = Dev
+devSourceFromInt 1 = Cache
+devSourceFromInt _ = CacheDev
   
 data HaskellTangoCommandData = HaskellCommandBool !CBool
                              | HaskellCommandInt16 !CShort
@@ -122,6 +135,7 @@ data HaskellTangoCommandData = HaskellCommandBool !CBool
                              | HaskellCommandDevState !HaskellTangoDevState
                              | HaskellCommandULong64 !CULong
                              | HaskellCommandDevEncoded !HaskellTangoDevEncoded
+                             | HaskellCommandDevEnum !CShort
                              | HaskellCommandVarBool !(HaskellTangoVarArray CBool)
                              | HaskellCommandVarChar !(HaskellTangoVarArray CChar)
                              | HaskellCommandVarShort !(HaskellTangoVarArray CShort)
@@ -215,6 +229,7 @@ data HaskellTangoDataType = HaskellDevVoid
                           | HaskellDevVarULong64Array
                           | HaskellDevInt
                           | HaskellDevEncoded
+                          | HaskellDevEnum
                           -- We explicitly have a type with index 29 and I don't know what that's supposed to be
                           | HaskellDevUnknown
                           deriving(Show, Eq, Ord, Bounded, Enum)
@@ -354,7 +369,6 @@ instance Storable HaskellVarDoubleStringArray where
     (#poke VarDoubleStringArray, string_length) ptr stringLength'
     V.unsafeWith stringSequence' ((#poke VarDoubleStringArray, string_sequence) ptr)
 
-
 data HaskellTangoDevEncoded = HaskellTangoDevEncoded
   { devEncodedFormat :: !VectorCString
   , devEncodedLength :: !Word32
@@ -398,6 +412,7 @@ data HaskellAttributeInfo = HaskellAttributeInfo
   , attributeInfoMaxAlarm :: !VectorCString
   , attributeInfoWritableAttrName :: !VectorCString
   , attributeInfoDispLevel :: !HaskellDispLevel
+  , attributeInfoEnumLabels :: V.Vector CString
   } deriving(Show)
 
 instance Storable HaskellAttributeInfo where
@@ -416,6 +431,10 @@ instance Storable HaskellAttributeInfo where
     min_alarm' <- cStringToVector <$> ((#peek AttributeInfo, min_alarm) ptr)
     max_alarm' <- cStringToVector <$> ((#peek AttributeInfo, max_alarm) ptr)
     writable_attr_name' <- cStringToVector <$> ((#peek AttributeInfo, writable_attr_name) ptr)
+    enum_labels_count' :: CUShort <- ((#peek AttributeInfo, enum_labels_count) ptr)
+    enum_labels' <- ((#peek AttributeInfo, enum_labels) ptr)
+    enumLabelsList <- peekArray (fromIntegral enum_labels_count') enum_labels'
+    let enumLabelsVector = V.fromList enumLabelsList
     HaskellAttributeInfo
          <$> name'
          <*> ((#peek AttributeInfo, writable) ptr)
@@ -435,7 +454,8 @@ instance Storable HaskellAttributeInfo where
          <*> max_alarm'
          <*> writable_attr_name'
          <*> ((#peek AttributeInfo, disp_level) ptr)
-  poke ptr (HaskellAttributeInfo name' writable' dataFormat' dataType' maxDimX' maxDimY' description' label' unit' standardUnit' displayUnit' format' minValue' maxValue' minAlarm' maxAlarm' writableAttrName' dispLevel') = do
+         <*> pure enumLabelsVector
+  poke ptr (HaskellAttributeInfo name' writable' dataFormat' dataType' maxDimX' maxDimY' description' label' unit' standardUnit' displayUnit' format' minValue' maxValue' minAlarm' maxAlarm' writableAttrName' dispLevel' enumLabels') = do
     V.unsafeWith name' ((#poke AttributeInfo, name) ptr)
     (#poke AttributeInfo, writable) ptr writable'
     (#poke AttributeInfo, data_format) ptr dataFormat'
@@ -453,6 +473,7 @@ instance Storable HaskellAttributeInfo where
     V.unsafeWith minAlarm' ((#poke AttributeInfo, min_alarm) ptr)
     V.unsafeWith maxAlarm' ((#poke AttributeInfo, max_alarm) ptr)
     V.unsafeWith writableAttrName' ((#poke AttributeInfo, writable_attr_name) ptr)
+    V.unsafeWith enumLabels' ((#poke AttributeInfo, enum_labels) ptr)
     (#poke AttributeInfo, disp_level) ptr dispLevel'
   
 data HaskellDbDatum = HaskellDbDatum
@@ -467,7 +488,7 @@ data HaskellAttributeData = HaskellAttributeData
   { dataFormat :: !HaskellDataFormat
   , dataQuality :: !HaskellDataQuality
   , nbRead :: !CLong
-  , name :: !VectorCString
+  , name :: !ShowableCString
   , dimX :: !Int32
   , dimY :: !Int32
   , timeStamp :: !Timeval
@@ -487,12 +508,12 @@ haskellDisplayLevelExpert :: CInt
 haskellDisplayLevelExpert = 1
 
 data HaskellCommandInfo = HaskellCommandInfo
-  { cmdName :: !VectorCString
+  { cmdName :: !ShowableCString
   , cmdTag :: !Int32
   , cmdInType :: !Int32
   , cmdOutType :: !Int32
-  , cmdInTypeDesc :: !VectorCString
-  , cmdOutTypeDesc :: !VectorCString
+  , cmdInTypeDesc :: !ShowableCString
+  , cmdOutTypeDesc :: !ShowableCString
   , cmdDisplayLevel :: !CInt
   } deriving(Show)
 
@@ -500,24 +521,29 @@ cStringToVector :: CString -> IO VectorCString
 cStringToVector cstr = do
   asString <- peekCString cstr
   pure (V.fromList (castCharToCChar <$> asString))
+  
+cStringToShowableVector :: CString -> IO ShowableCString
+cStringToShowableVector cstr = do
+  asString <- peekCString cstr
+  pure (ShowableCString (V.fromList (castCharToCChar <$> asString)))
 
 instance Storable HaskellCommandInfo where
   sizeOf _ = (#{size CommandInfo})
   alignment _ = (#alignment CommandInfo)
   peek ptr = do
     cmd_name' <- (#peek CommandInfo, cmd_name) ptr
-    cmdNameAsVector <- cStringToVector cmd_name'
+    cmdNameAsVector <- cStringToShowableVector cmd_name'
     cmd_tag' <- (#peek CommandInfo, cmd_tag) ptr
     in_type' <- (#peek CommandInfo, in_type) ptr
     out_type' <- (#peek CommandInfo, out_type) ptr
     in_type_desc' <- (#peek CommandInfo, in_type_desc) ptr
-    inTypeDescAsVector <- cStringToVector in_type_desc'
+    inTypeDescAsVector <- cStringToShowableVector in_type_desc'
     out_type_desc' <- (#peek CommandInfo, out_type_desc) ptr
-    outTypeDescAsVector <- cStringToVector out_type_desc'
+    outTypeDescAsVector <- cStringToShowableVector out_type_desc'
     disp_level' <- (#peek CommandInfo, disp_level) ptr
     pure (HaskellCommandInfo cmdNameAsVector cmd_tag' in_type' out_type' inTypeDescAsVector outTypeDescAsVector disp_level')
   -- I see no reason why we'd ever poke this (i.e. write an info struct)
-  poke ptr (HaskellCommandInfo cmd_name' cmd_tag' in_type' out_type' in_type_desc' out_type_desc' disp_level') = do
+  poke ptr (HaskellCommandInfo (ShowableCString cmd_name') cmd_tag' in_type' out_type' (ShowableCString in_type_desc') (ShowableCString out_type_desc') disp_level') = do
     V.unsafeWith cmd_name' ((#poke CommandInfo, cmd_name) ptr)
     (#poke CommandInfo, cmd_tag) ptr cmd_tag'
     (#poke CommandInfo, in_type) ptr in_type'
@@ -547,12 +573,39 @@ instance Storable HaskellDbDatum where
                       propertyNameAsVector
                       is_empty'
                       wrong_data_type'
+                      data_type'
     case data_type' of
+      HaskellDevVoid -> error "encountered void type in DbDatum"
+      HaskellDevUnknown -> error "encountered unknown type in DbDatum"
+      HaskellDevEnum -> error "encountered enum in DbDatum"
+      HaskellDevBoolean -> (withoutType . HaskellPropBool) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevShort -> (withoutType . HaskellPropShort) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevLong -> (withoutType . HaskellPropLong) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevFloat -> (withoutType . HaskellPropFloat) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevDouble -> (withoutType . HaskellPropDouble) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevUShort -> (withoutType . HaskellPropUShort) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevULong -> (withoutType . HaskellPropULong) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevString -> (withoutType . HaskellPropString) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarCharArray -> error "type var char array not supported in dbdatum"
+      HaskellDevVarShortArray -> (withoutType . HaskellPropShortArray) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarLongArray -> (withoutType . HaskellPropLongArray) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarFloatArray -> (withoutType . HaskellPropFloatArray) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarDoubleArray -> (withoutType . HaskellPropDoubleArray) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarUShortArray -> (withoutType . HaskellPropUShortArray) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarULongArray -> (withoutType . HaskellPropULongArray) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarStringArray -> (withoutType . HaskellPropStringArray) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarLongStringArray -> error "type long string array not supported in dbdatum"
+      HaskellDevVarDoubleStringArray -> error "type double string array not supported in dbdatum"
+      HaskellDevState -> error "type state not supported in dbdatum"
+      HaskellConstDevString -> error "type const dev string not supported in dbdatum"
       HaskellDevVarBooleanArray -> error ("encountered a property " <> show propertyNameAsVector <> " with type boolean array -- this is not supported (yet)")
-      HaskellDevVarStringArray -> do
-        prop_data' :: HaskellTangoVarArray CString <- (#peek DbDatum, prop_data) ptr
-        pure (withoutType HaskellDevString (HaskellPropStringArray prop_data'))
-      _ -> error ("not supported data type: " <> show data_type')
+      HaskellDevUChar -> error "type unsigned char not supported in dbdatum"
+      HaskellDevLong64 -> (withoutType . HaskellPropLong64) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevULong64 -> (withoutType . HaskellPropULong64) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevInt -> error "type int not supported in dbdatum"
+      HaskellDevEncoded -> error "type encoded not supported in dbdatum"
+      HaskellDevVarLong64Array -> (withoutType . HaskellPropLong64Array) <$> ((#peek DbDatum, prop_data) ptr)
+      HaskellDevVarULong64Array -> (withoutType . HaskellPropULong64Array) <$> ((#peek DbDatum, prop_data) ptr)
   poke ptr haskellDbDatum = do
     V.unsafeWith (dbDatumPropertyName haskellDbDatum) $ \namePtr -> (#poke DbDatum, property_name) ptr namePtr
     (#poke DbDatum, is_empty) ptr (dbDatumIsEmpty haskellDbDatum)
@@ -574,7 +627,7 @@ instance Storable HaskellAttributeData where
     dim_x' <- (#peek AttributeData, dim_x) ptr
     dim_y' <- (#peek AttributeData, dim_y) ptr
     name' <- (#peek AttributeData, name) ptr
-    nameAsVector <- cStringToVector name'
+    nameAsVector <- cStringToShowableVector name'
     nb_read' <- (#peek AttributeData, nb_read) ptr
     quality' <- (#peek AttributeData, quality) ptr
     data_format' <- (#peek AttributeData, data_format) ptr
@@ -667,10 +720,13 @@ instance Storable HaskellAttributeData where
       HaskellDevEncoded -> do
         attr_data' <- (#peek AttributeData, attr_data) ptr
         pure (withoutType (HaskellAttributeDataEncodedArray attr_data'))
+      HaskellDevEnum -> do
+        attr_data' <- (#peek AttributeData, attr_data) ptr
+        pure (withoutType (HaskellAttributeDataShortArray attr_data'))
   poke ptr haskellAttributeData = do
     (#poke AttributeData, dim_x) ptr (dimX haskellAttributeData)
     (#poke AttributeData, dim_y) ptr (dimY haskellAttributeData)
-    V.unsafeWith (name haskellAttributeData) $ \namePtr -> (#poke AttributeData, name) ptr namePtr
+    V.unsafeWith (unShowable (name haskellAttributeData)) $ \namePtr -> (#poke AttributeData, name) ptr namePtr
     (#poke AttributeData, data_type) ptr (dataType haskellAttributeData)
     case tangoAttributeData haskellAttributeData of
       HaskellAttributeDataBoolArray v -> (#poke AttributeData, attr_data) ptr v
@@ -727,6 +783,9 @@ instance Storable HaskellCommandData where
       HaskellDevEncoded -> do
         cmd_data' <- (#peek CommandData, cmd_data) ptr
         pure (HaskellCommandData data_type' (HaskellCommandDevEncoded cmd_data'))
+      HaskellDevEnum -> do
+        cmd_data' <- (#peek CommandData, cmd_data) ptr
+        pure (HaskellCommandData data_type' (HaskellCommandDevEnum cmd_data'))
       HaskellDevVarBooleanArray -> do
         cmd_data' <- (#peek CommandData, cmd_data) ptr
         pure (HaskellCommandData data_type' (HaskellCommandVarBool cmd_data'))
@@ -800,6 +859,7 @@ instance Storable HaskellCommandData where
       HaskellCommandVarDevState v -> (#poke CommandData, cmd_data) ptr v
       HaskellCommandLongStringArray v -> (#poke CommandData, cmd_data) ptr v
       HaskellCommandDoubleStringArray v -> (#poke CommandData, cmd_data) ptr v
+      HaskellCommandDevEnum v -> (#poke CommandData, cmd_data) ptr v
 
 data HaskellDevFailed a = HaskellDevFailed
   { devFailedDesc :: !a,

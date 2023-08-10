@@ -16,7 +16,7 @@
 ErrorStack *tango_translate_exception(Tango::DevFailed& tango_exception);
 static void convert_attribute_reading (Tango::DeviceAttribute& devattr, AttributeData *argout);
 static void convert_attribute_writing (AttributeData *argin, Tango::DeviceAttribute& devattr);
-static void convert_attr_query(Tango::AttributeInfo& tango_attr_info, AttributeInfo *attr_info);
+static void convert_attr_query(Tango::AttributeInfoEx& tango_attr_info, AttributeInfo *attr_info);
 
 
 ErrorStack *tango_read_attributes(void *proxy, VarStringArray *attr_names, AttributeDataList *argout) {
@@ -180,7 +180,7 @@ ErrorStack *tango_get_attribute_list(void *proxy, VarStringArray *attr_names) {
 
 ErrorStack *tango_get_attribute_config(void *proxy, VarStringArray *attr_names, AttributeInfoList *attr_info_list) {
     Tango::DeviceProxy *dev = (Tango::DeviceProxy *)proxy;
-    std::vector<Tango::AttributeInfo> *tango_attr_info_list = 0;
+    std::vector<Tango::AttributeInfoEx> *tango_attr_info_list = 0;
 
     // copy the attribute names to a vector of string
     std::vector<std::string> names;
@@ -189,7 +189,7 @@ ErrorStack *tango_get_attribute_config(void *proxy, VarStringArray *attr_names, 
     }
 
     try {
-        tango_attr_info_list = dev->get_attribute_config(names);
+        tango_attr_info_list = dev->get_attribute_config_ex(names);
 
         // allocate the AttributeInfoList for the number of attributes returned
         INIT_SEQ(*attr_info_list, AttributeInfo, tango_attr_info_list->size());
@@ -211,10 +211,10 @@ ErrorStack *tango_get_attribute_config(void *proxy, VarStringArray *attr_names, 
 
 ErrorStack *tango_attribute_list_query (void *proxy, AttributeInfoList *attr_info_list) {
     Tango::DeviceProxy *dev = (Tango::DeviceProxy *)proxy;
-    std::vector<Tango::AttributeInfo> *tango_attr_info_list = 0;
+    std::vector<Tango::AttributeInfoEx> *tango_attr_info_list = 0;
 
     try {
-        tango_attr_info_list = dev->attribute_list_query();
+        tango_attr_info_list = dev->attribute_list_query_ex();
 
         // allocate the AttributeInfoList for the number of attributes returned
         INIT_SEQ(*attr_info_list, AttributeInfo, tango_attr_info_list->size());
@@ -255,6 +255,9 @@ void tango_free_AttributeInfoList(AttributeInfoList *attribute_info_list) {
         free(attribute_info_list->sequence[i].min_alarm);
         free(attribute_info_list->sequence[i].max_alarm);
         free(attribute_info_list->sequence[i].writable_attr_name);
+	for (uint16_t j = 0; j < attribute_info_list->sequence[i].enum_labels_count; ++j)
+	  free(attribute_info_list->sequence[i].enum_labels[j]);
+	delete[] attribute_info_list->sequence[i].enum_labels;
     }
     delete[] attribute_info_list->sequence;
 }
@@ -291,6 +294,7 @@ void convert_attribute_reading(Tango::DeviceAttribute& devattr, AttributeData *a
         case DEV_BOOLEAN: EXTRACT_ARRAY(bool_arr, DevVarBooleanArray, bool);
         case DEV_UCHAR:   EXTRACT_ARRAY(char_arr, DevVarCharArray, uint8_t);
         case DEV_SHORT:   EXTRACT_ARRAY(short_arr, DevVarShortArray, int16_t);
+        case DEV_ENUM:    EXTRACT_ARRAY(short_arr, DevVarShortArray, int16_t);
         case DEV_USHORT:  EXTRACT_ARRAY(ushort_arr, DevVarUShortArray, uint16_t);
         case DEV_LONG:    EXTRACT_ARRAY(long_arr, DevVarLongArray, Tango::DevLong);
         case DEV_ULONG:   EXTRACT_ARRAY(ulong_arr, DevVarULongArray, Tango::DevULong);
@@ -447,7 +451,7 @@ void convert_attribute_writing(AttributeData *argin, Tango::DeviceAttribute& dev
 }
 
 
-static void convert_attr_query(Tango::AttributeInfo& tango_attr_info, AttributeInfo *attr_info) {
+static void convert_attr_query(Tango::AttributeInfoEx& tango_attr_info, AttributeInfo *attr_info) {
     attr_info->name = strdup(tango_attr_info.name.c_str());
     attr_info->description = strdup(tango_attr_info.description.c_str());
     attr_info->label = strdup(tango_attr_info.label.c_str());
@@ -467,4 +471,9 @@ static void convert_attr_query(Tango::AttributeInfo& tango_attr_info, AttributeI
     attr_info->max_dim_x = tango_attr_info.max_dim_x;
     attr_info->max_dim_y = tango_attr_info.max_dim_y;
     attr_info->disp_level = (DispLevel)tango_attr_info.disp_level;
+    char **enum_labels = new char*[tango_attr_info.enum_labels.size()];
+    for (std::size_t i = 0; i < tango_attr_info.enum_labels.size(); ++i)
+      enum_labels[i] = strdup(tango_attr_info.enum_labels[i].c_str());
+    attr_info->enum_labels = enum_labels;
+    attr_info->enum_labels_count = static_cast<uint16_t>(tango_attr_info.enum_labels.size());
 }
