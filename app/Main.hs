@@ -3,13 +3,14 @@
 
 module Main where
 
+import Control.Exception (bracket)
 import Control.Monad (forM_, void, when)
 import qualified Data.Vector.Storable as V
 import Foreign
   ( Storable (peek),
     alloca,
   )
-import Foreign.C.String (CString, peekCString, withCString)
+import Foreign.C.String (CString, newCString, peekCString, withCString)
 import Foreign.Marshal (free, peekArray, with)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
@@ -196,33 +197,34 @@ main = do
       tango_free_VarStringArray stringArrayPtr
       pure haskellStrings
 
-    putStrLn ("=> reading all attributes")
+    -- putStrLn ("=> reading all attributes")
 
-    -- uchar_scalar is not supported by c_tango right now
-    forM_ (filter (not . (`elem` ["no_value", "throw_exception", "uchar_scalar", "uchar_spectrum", "uchar_spectrum_ro", "uchar_image", "uchar_image_ro", "enum_image_ro"])) attributeNames) $ \attributeNameHaskell -> do
-      withCString attributeNameHaskell $ \attributeName -> do
-        putStrLn ("  <= reading " <> attributeNameHaskell)
-        alloca $ \argoutPtr -> do
-          checkResult (tango_read_attribute proxyPtr attributeName argoutPtr)
-          argout <- peek argoutPtr
-          putStrLn ("  => result " <> show argout)
-          tango_free_AttributeData argoutPtr
+    -- forM_ (filter (not . (`elem` ["no_value", "throw_exception"])) attributeNames) $ \attributeNameHaskell -> do
+    --   withCString attributeNameHaskell $ \attributeName -> do
+    --     putStrLn ("  <= reading " <> attributeNameHaskell)
+    --     alloca $ \argoutPtr -> do
+    --       checkResult (tango_read_attribute proxyPtr attributeName argoutPtr)
+    --       argout <- peek argoutPtr
+    --       putStrLn ("  => result " <> show argout)
+    --       tango_free_AttributeData argoutPtr
 
-    -- hPutStrLn stderr ("attribute names: " <> show attributeNames)
-    -- bracket (traverse newCString attributeNames) (traverse free) $ \attributeNamesCStrings ->
-    --   with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
-    --     checkResult (tango_get_attribute_config proxyPtr stringArrayPtr attributeInfoListPtr)
-    --     stringArray <- peek stringArrayPtr
-    --     hPutStrLn stderr "begin attribute config list, names"
-    --     forM_ (V.toList (varArrayValues stringArray)) $ \cstring -> do
-    --       str <- peekCString cstring
-    --       hPutStrLn stderr ("attribute config list: " <> str)
-    --     hPutStrLn stderr "end attribute config list, names"
-    --     infos <- peek attributeInfoListPtr
-    --     hPutStrLn stderr "begin attribute config list, attributes"
-    --     forM_ (V.toList (attributeInfos infos)) $ \info -> do
-    --       hPutStrLn stderr ("attribute config info: " <> show info)
-    --     hPutStrLn stderr "end attribute config list, attributes"
+    -- putStrLn ("<= read all attributes")
+
+    putStrLn ("=> reading attribute configurations")
+    bracket (traverse newCString (attributeNames)) (traverse free) $ \attributeNamesCStrings ->
+      with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
+        checkResult (tango_get_attribute_config proxyPtr stringArrayPtr attributeInfoListPtr)
+        stringArray <- peek stringArrayPtr
+        putStrLn ("<= read attribute configurations, starting list of attribute names (?):")
+        forM_ (V.toList (varArrayValues stringArray)) $ \cstring -> do
+          str <- peekCString cstring
+          putStrLn ("  -> list element: " <> str)
+        putStrLn ("=> finish listing names")
+        infos <- peek attributeInfoListPtr
+        putStrLn ("<= read attribute configurations, starting list of attribute configurations:")
+        forM_ (V.toList (attributeInfos infos)) $ \info -> do
+          putStrLn ("  -> list element: " <> show info)
+        putStrLn ("=> finish listing configurations")
 
     --   with (HaskellAttributeData HaskellScalar HaskellValid 0 (stringToVector "double_scalar") 1 0 (Timeval 0 0) HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
     --     hPutStrLn stderr "writing attribute"

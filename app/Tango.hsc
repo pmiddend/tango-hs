@@ -73,6 +73,7 @@ import Foreign.C.String(peekCString, CString, castCharToCChar, castCCharToChar)
 import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong, CChar, CInt(CInt), CShort, CUInt, CUShort, CFloat)
 import Data.Word(Word32, Word8, Word64)
 import Data.Int(Int32)
+import System.IO(hPutStrLn, stderr)
 import Foreign.Ptr(Ptr, castPtr)
 import qualified Data.Vector.Storable as V
 import Data.List(find)
@@ -394,23 +395,23 @@ instance Storable HaskellTangoDevEncoded where
 type VectorCString = V.Vector CChar
   
 data HaskellAttributeInfo = HaskellAttributeInfo
-  { attributeInfoName :: !VectorCString
+  { attributeInfoName :: !ShowableCString
   , attributeInfoWritable :: !HaskellAttrWriteType
   , attributeInfoDataFormat :: !HaskellDataFormat
   , attributeInfoDataType :: !HaskellTangoDataType
   , attributeInfoMaxDimX :: !Int
   , attributeInfoMaxDimY :: !Int
-  , attributeInfoDescription :: !VectorCString
-  , attributeInfoLabel :: !VectorCString
-  , attributeInfoUnit :: !VectorCString
-  , attributeInfoStandardUnit :: !VectorCString
-  , attributeInfoDisplayUnit :: !VectorCString
-  , attributeInfoFormat :: !VectorCString
-  , attributeInfoMinValue :: !VectorCString
-  , attributeInfoMaxValue :: !VectorCString
-  , attributeInfoMinAlarm :: !VectorCString
-  , attributeInfoMaxAlarm :: !VectorCString
-  , attributeInfoWritableAttrName :: !VectorCString
+  , attributeInfoDescription :: !ShowableCString
+  , attributeInfoLabel :: !ShowableCString
+  , attributeInfoUnit :: !ShowableCString
+  , attributeInfoStandardUnit :: !ShowableCString
+  , attributeInfoDisplayUnit :: !ShowableCString
+  , attributeInfoFormat :: !ShowableCString
+  , attributeInfoMinValue :: !ShowableCString
+  , attributeInfoMaxValue :: !ShowableCString
+  , attributeInfoMinAlarm :: !ShowableCString
+  , attributeInfoMaxAlarm :: !ShowableCString
+  , attributeInfoWritableAttrName :: !ShowableCString
   , attributeInfoDispLevel :: !HaskellDispLevel
   , attributeInfoEnumLabels :: V.Vector CString
   } deriving(Show)
@@ -419,24 +420,28 @@ instance Storable HaskellAttributeInfo where
   sizeOf _ = (#{size AttributeInfo})
   alignment _ = (#alignment AttributeInfo)
   peek ptr = do
-    name' <- cStringToVector <$> ((#peek AttributeInfo, name) ptr)
-    description' <- cStringToVector <$> ((#peek AttributeInfo, description) ptr)
-    label' <- cStringToVector <$> ((#peek AttributeInfo, label) ptr)
-    unit' <- cStringToVector <$> ((#peek AttributeInfo, unit) ptr)
-    standard_unit' <- cStringToVector <$> ((#peek AttributeInfo, standard_unit) ptr)
-    display_unit' <- cStringToVector <$> ((#peek AttributeInfo, display_unit) ptr)
-    format' <- cStringToVector <$> ((#peek AttributeInfo, format) ptr)
-    min_value' <- cStringToVector <$> ((#peek AttributeInfo, min_value) ptr)
-    max_value' <- cStringToVector <$> ((#peek AttributeInfo, max_value) ptr)
-    min_alarm' <- cStringToVector <$> ((#peek AttributeInfo, min_alarm) ptr)
-    max_alarm' <- cStringToVector <$> ((#peek AttributeInfo, max_alarm) ptr)
-    writable_attr_name' <- cStringToVector <$> ((#peek AttributeInfo, writable_attr_name) ptr)
+    putStrLn "peeking HaskellAttributeInfo"
+    name' <- (#peek AttributeInfo, name) ptr
+    nameAsVector <- cStringToShowableVector name'
+    description' <- cStringToShowableVector <$> ((#peek AttributeInfo, description) ptr)
+    label' <- cStringToShowableVector <$> ((#peek AttributeInfo, label) ptr)
+    unit' <- cStringToShowableVector <$> ((#peek AttributeInfo, unit) ptr)
+    standard_unit' <- ((#peek AttributeInfo, standard_unit) ptr)
+    standardUnitAsVector <- cStringToShowableVector standard_unit'
+    putStrLn ("standard unit: hs: " <> show nameAsVector <> ": " <> show standardUnitAsVector)
+    display_unit' <- cStringToShowableVector <$> ((#peek AttributeInfo, display_unit) ptr)
+    format' <- cStringToShowableVector <$> ((#peek AttributeInfo, format) ptr)
+    min_value' <- cStringToShowableVector <$> ((#peek AttributeInfo, min_value) ptr)
+    max_value' <- cStringToShowableVector <$> ((#peek AttributeInfo, max_value) ptr)
+    min_alarm' <- cStringToShowableVector <$> ((#peek AttributeInfo, min_alarm) ptr)
+    max_alarm' <- cStringToShowableVector <$> ((#peek AttributeInfo, max_alarm) ptr)
+    writable_attr_name' <- cStringToShowableVector <$> ((#peek AttributeInfo, writable_attr_name) ptr)
     enum_labels_count' :: CUShort <- ((#peek AttributeInfo, enum_labels_count) ptr)
     enum_labels' <- ((#peek AttributeInfo, enum_labels) ptr)
     enumLabelsList <- peekArray (fromIntegral enum_labels_count') enum_labels'
     let enumLabelsVector = V.fromList enumLabelsList
     HaskellAttributeInfo
-         <$> name'
+         <$> pure nameAsVector
          <*> ((#peek AttributeInfo, writable) ptr)
          <*> ((#peek AttributeInfo, data_format) ptr)
          <*> ((#peek AttributeInfo, data_type) ptr)
@@ -445,7 +450,7 @@ instance Storable HaskellAttributeInfo where
          <*> description'
          <*> label'
          <*> unit'
-         <*> standard_unit'
+         <*> pure standardUnitAsVector
          <*> display_unit'
          <*> format'
          <*> min_value'
@@ -455,7 +460,8 @@ instance Storable HaskellAttributeInfo where
          <*> writable_attr_name'
          <*> ((#peek AttributeInfo, disp_level) ptr)
          <*> pure enumLabelsVector
-  poke ptr (HaskellAttributeInfo name' writable' dataFormat' dataType' maxDimX' maxDimY' description' label' unit' standardUnit' displayUnit' format' minValue' maxValue' minAlarm' maxAlarm' writableAttrName' dispLevel' enumLabels') = do
+  poke ptr (HaskellAttributeInfo showableName@(ShowableCString name') writable' dataFormat' dataType' maxDimX' maxDimY' (ShowableCString description') (ShowableCString label') (ShowableCString unit') (ShowableCString standardUnit') (ShowableCString displayUnit') (ShowableCString format') (ShowableCString minValue') (ShowableCString maxValue') (ShowableCString minAlarm') (ShowableCString maxAlarm') (ShowableCString writableAttrName') dispLevel' enumLabels') = do
+    putStrLn "poking HaskellAttributeInfo"
     V.unsafeWith name' ((#poke AttributeInfo, name) ptr)
     (#poke AttributeInfo, writable) ptr writable'
     (#poke AttributeInfo, data_format) ptr dataFormat'
@@ -700,7 +706,9 @@ instance Storable HaskellAttributeData where
       HaskellConstDevString -> do
         attr_data' <- (#peek AttributeData, attr_data) ptr
         pure (withoutType (HaskellAttributeDataStringArray attr_data'))
-      HaskellDevUChar -> error "unsigned char arrays are not supported right now"
+      HaskellDevUChar -> do
+        attr_data' <- (#peek AttributeData, attr_data) ptr
+        pure (withoutType (HaskellAttributeDataCharArray attr_data'))
       HaskellDevVarBooleanArray -> do
         attr_data' <- (#peek AttributeData, attr_data) ptr
         pure (withoutType (HaskellAttributeDataBoolArray attr_data'))

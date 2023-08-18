@@ -194,6 +194,7 @@ ErrorStack *tango_get_attribute_config(void *proxy, VarStringArray *attr_names, 
         // allocate the AttributeInfoList for the number of attributes returned
         INIT_SEQ(*attr_info_list, AttributeInfo, tango_attr_info_list->size());
 
+	std::cerr << "looping over " << tango_attr_info_list->size() << " attributes" << std::endl;
         // loop over all returned attributes and convert the data
         for (uint32_t i = 0; i < tango_attr_info_list->size(); i++) {
             convert_attr_query((*tango_attr_info_list)[i], &attr_info_list->sequence[i]);
@@ -257,7 +258,8 @@ void tango_free_AttributeInfoList(AttributeInfoList *attribute_info_list) {
         free(attribute_info_list->sequence[i].writable_attr_name);
 	for (uint16_t j = 0; j < attribute_info_list->sequence[i].enum_labels_count; ++j)
 	  free(attribute_info_list->sequence[i].enum_labels[j]);
-	delete[] attribute_info_list->sequence[i].enum_labels;
+	if (attribute_info_list->sequence[i].enum_labels_count > 0)
+	  delete[] attribute_info_list->sequence[i].enum_labels;
     }
     delete[] attribute_info_list->sequence;
 }
@@ -457,6 +459,7 @@ static void convert_attr_query(Tango::AttributeInfoEx& tango_attr_info, Attribut
     attr_info->label = strdup(tango_attr_info.label.c_str());
     attr_info->unit = strdup(tango_attr_info.unit.c_str());
     attr_info->standard_unit = strdup(tango_attr_info.standard_unit.c_str());
+    std::cerr << "standard unit: " << attr_info->standard_unit << std::endl;
     attr_info->display_unit = strdup(tango_attr_info.display_unit.c_str());
     attr_info->format = strdup(tango_attr_info.format.c_str());
     attr_info->min_value = strdup(tango_attr_info.min_value.c_str());
@@ -471,9 +474,14 @@ static void convert_attr_query(Tango::AttributeInfoEx& tango_attr_info, Attribut
     attr_info->max_dim_x = tango_attr_info.max_dim_x;
     attr_info->max_dim_y = tango_attr_info.max_dim_y;
     attr_info->disp_level = (DispLevel)tango_attr_info.disp_level;
-    char **enum_labels = new char*[tango_attr_info.enum_labels.size()];
-    for (std::size_t i = 0; i < tango_attr_info.enum_labels.size(); ++i)
-      enum_labels[i] = strdup(tango_attr_info.enum_labels[i].c_str());
-    attr_info->enum_labels = enum_labels;
-    attr_info->enum_labels_count = static_cast<uint16_t>(tango_attr_info.enum_labels.size());
+    std::size_t const enum_label_count = tango_attr_info.enum_labels.size();
+    if (enum_label_count > 0) {
+      char **enum_labels = new char*[enum_label_count];
+      for (std::size_t i = 0; i < enum_label_count; ++i)
+	enum_labels[i] = strdup(tango_attr_info.enum_labels[i].c_str());
+      attr_info->enum_labels = enum_labels;
+    } else {
+      attr_info->enum_labels = nullptr;
+    }
+    attr_info->enum_labels_count = static_cast<uint16_t>(enum_label_count);
 }
