@@ -24,8 +24,8 @@ executable tango-hs-testprogram
     main-is:          Main.hs
     other-modules: Tango
     build-depends:    base
-                    , vector
                     , text
+                    , derive-storable
     hs-source-dirs:   app
     -- include-dirs: c_tango/src
     hsc2hs-options: --cc g++ --lflag=-lstdc++ -k -DCABAL_BINDGEN=1

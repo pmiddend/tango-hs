@@ -3,6 +3,7 @@
 {-# LANGUAGE BangPatterns                         #-}
 {-# LANGUAGE DeriveFunctor                         #-}
 {-# LANGUAGE DeriveFoldable                         #-}
+{-# LANGUAGE DeriveGeneric                         #-}
 {-# LANGUAGE DeriveTraversable                         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Tango(tango_create_device_proxy,
@@ -63,18 +64,17 @@ module Tango(tango_create_device_proxy,
              HaskellCommandInfoList(..),
              HaskellTangoAttributeData(..),
              devSourceToInt,
-             devSourceFromInt,
-             stringToVector
+             devSourceFromInt
              ) where
 
-import Foreign(Storable(peek, poke, alignment, sizeOf), pokeByteOff, peekArray, peekByteOff)
-import Foreign.C.String(peekCString, CString, castCharToCChar, castCCharToChar)
+import Foreign(Storable(peek, poke, alignment, sizeOf), pokeByteOff, peekByteOff)
+import Foreign.C.String(peekCString, CString)
+import Foreign.Storable.Generic(GStorable)
+import GHC.Generics(Generic)
 import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong, CChar, CInt(CInt), CShort, CUInt, CUShort, CFloat)
-import Data.Word(Word32, Word8, Word64)
+import Data.Word(Word32, Word8, Word64, Word16)
 import Data.Int(Int32)
-import System.IO(hPutStrLn, stderr)
 import Foreign.Ptr(Ptr, castPtr)
-import qualified Data.Vector.Storable as V
 import Data.List(find)
 
 #include <c_tango.h>
@@ -99,14 +99,6 @@ instance Storable HaskellTangoDevState where
   alignment _ = (#alignment TangoDevState)
   peek = peekBounded "dev state"
   poke = pokeBounded "dev state"
-
-newtype ShowableCString = ShowableCString {
-    unShowable :: VectorCString
-  }
-
-instance Show ShowableCString where
-  show (ShowableCString cs) = show (castCCharToChar <$> V.toList cs)
-
 
 data HaskellDevSource = Dev
                       | Cache
@@ -191,12 +183,6 @@ data HaskellTangoPropertyData = HaskellPropBool !CBool
                               | HaskellPropStringArray !(HaskellTangoVarArray CString)
                               deriving(Show)
 
--- withStringArray :: [String] -> (V.Vector CString -> IO b) -> IO b
--- withStringArray strings =
---   let retrieveStrings = V.fromList <$> traverse newCString strings
---       destroyStrings = traverse free . V.toList
---   in bracket retrieveStrings destroyStrings
-
 data HaskellTangoDataType = HaskellDevVoid
                           | HaskellDevBoolean
                           | HaskellDevShort
@@ -237,9 +223,6 @@ instance Storable HaskellTangoDataType where
   alignment _ = (#alignment TangoDataType)
   peek = peekBounded "data type"
   poke = pokeBounded "data type"
-
-stringToVector :: String -> V.Vector CChar
-stringToVector s = V.fromList (castCharToCChar <$> s)
 
 data HaskellDataFormat = HaskellScalar
                        | HaskellSpectrum
@@ -366,114 +349,37 @@ data HaskellTangoDevEncoded = HaskellTangoDevEncoded
   { devEncodedFormat :: !CString
   , devEncodedLength :: !Word32
   , devEncodedData :: !(Ptr Word8)
-  } deriving(Show)
+  } deriving(Show, Generic)
 
-instance Storable HaskellTangoDevEncoded where
-  sizeOf _ = (#{size TangoDevEncoded})
-  alignment _ = (#alignment TangoDevEncoded)
-  peek ptr = do
-    encoded_format' <- ((#peek TangoDevEncoded, encoded_format) ptr)
-    encoded_length' <- (#peek TangoDevEncoded, encoded_length) ptr
-    encoded_data' <- (#peek TangoDevEncoded, encoded_data) ptr
-    pure (HaskellTangoDevEncoded encoded_format' encoded_length' encoded_data')
-  poke ptr (HaskellTangoDevEncoded format' length' data') = do
-    (#poke TangoDevEncoded, encoded_format) ptr format'
-    (#poke TangoDevEncoded, encoded_length) ptr length'
-    (#poke TangoDevEncoded, encoded_data) ptr data'
-  
+instance GStorable HaskellTangoDevEncoded
 
-type VectorCString = V.Vector CChar
-  
 data HaskellAttributeInfo = HaskellAttributeInfo
-  { attributeInfoName :: !ShowableCString
+  { attributeInfoName :: !CString
   , attributeInfoWritable :: !HaskellAttrWriteType
   , attributeInfoDataFormat :: !HaskellDataFormat
   , attributeInfoDataType :: !HaskellTangoDataType
-  , attributeInfoMaxDimX :: !Int
-  , attributeInfoMaxDimY :: !Int
-  , attributeInfoDescription :: !ShowableCString
-  , attributeInfoLabel :: !ShowableCString
-  , attributeInfoUnit :: !ShowableCString
-  , attributeInfoStandardUnit :: !ShowableCString
-  , attributeInfoDisplayUnit :: !ShowableCString
-  , attributeInfoFormat :: !ShowableCString
-  , attributeInfoMinValue :: !ShowableCString
-  , attributeInfoMaxValue :: !ShowableCString
-  , attributeInfoMinAlarm :: !ShowableCString
-  , attributeInfoMaxAlarm :: !ShowableCString
-  , attributeInfoWritableAttrName :: !ShowableCString
+  , attributeInfoMaxDimX :: !Int32
+  , attributeInfoMaxDimY :: !Int32
+  , attributeInfoDescription :: !CString
+  , attributeInfoLabel :: !CString
+  , attributeInfoUnit :: !CString
+  , attributeInfoStandardUnit :: !CString
+  , attributeInfoDisplayUnit :: !CString
+  , attributeInfoFormat :: !CString
+  , attributeInfoMinValue :: !CString
+  , attributeInfoMaxValue :: !CString
+  , attributeInfoMinAlarm :: !CString
+  , attributeInfoMaxAlarm :: !CString
+  , attributeInfoWritableAttrName :: !CString
   , attributeInfoDispLevel :: !HaskellDispLevel
-  , attributeInfoEnumLabels :: V.Vector CString
-  } deriving(Show)
+  , attributeInfoEnumLabels :: Ptr CString
+  , attributeInfoEnumLabelsCount :: Word16
+  } deriving(Show, Generic)
 
-instance Storable HaskellAttributeInfo where
-  sizeOf _ = (#{size AttributeInfo})
-  alignment _ = (#alignment AttributeInfo)
-  peek ptr = do
-    putStrLn "peeking HaskellAttributeInfo"
-    name' <- (#peek AttributeInfo, name) ptr
-    nameAsVector <- cStringToShowableVector name'
-    description' <- cStringToShowableVector <$> ((#peek AttributeInfo, description) ptr)
-    label' <- cStringToShowableVector <$> ((#peek AttributeInfo, label) ptr)
-    unit' <- cStringToShowableVector <$> ((#peek AttributeInfo, unit) ptr)
-    standard_unit' <- ((#peek AttributeInfo, standard_unit) ptr)
-    standardUnitAsVector <- cStringToShowableVector standard_unit'
-    putStrLn ("standard unit: hs: " <> show nameAsVector <> ": " <> show standardUnitAsVector)
-    display_unit' <- cStringToShowableVector <$> ((#peek AttributeInfo, display_unit) ptr)
-    format' <- cStringToShowableVector <$> ((#peek AttributeInfo, format) ptr)
-    min_value' <- cStringToShowableVector <$> ((#peek AttributeInfo, min_value) ptr)
-    max_value' <- cStringToShowableVector <$> ((#peek AttributeInfo, max_value) ptr)
-    min_alarm' <- cStringToShowableVector <$> ((#peek AttributeInfo, min_alarm) ptr)
-    max_alarm' <- cStringToShowableVector <$> ((#peek AttributeInfo, max_alarm) ptr)
-    writable_attr_name' <- cStringToShowableVector <$> ((#peek AttributeInfo, writable_attr_name) ptr)
-    enum_labels_count' :: CUShort <- ((#peek AttributeInfo, enum_labels_count) ptr)
-    enum_labels' <- ((#peek AttributeInfo, enum_labels) ptr)
-    enumLabelsList <- peekArray (fromIntegral enum_labels_count') enum_labels'
-    let enumLabelsVector = V.fromList enumLabelsList
-    HaskellAttributeInfo
-         <$> pure nameAsVector
-         <*> ((#peek AttributeInfo, writable) ptr)
-         <*> ((#peek AttributeInfo, data_format) ptr)
-         <*> ((#peek AttributeInfo, data_type) ptr)
-         <*> ((#peek AttributeInfo, max_dim_x) ptr)
-         <*> ((#peek AttributeInfo, max_dim_y) ptr)
-         <*> description'
-         <*> label'
-         <*> unit'
-         <*> pure standardUnitAsVector
-         <*> display_unit'
-         <*> format'
-         <*> min_value'
-         <*> max_value'
-         <*> min_alarm'
-         <*> max_alarm'
-         <*> writable_attr_name'
-         <*> ((#peek AttributeInfo, disp_level) ptr)
-         <*> pure enumLabelsVector
-  poke ptr (HaskellAttributeInfo showableName@(ShowableCString name') writable' dataFormat' dataType' maxDimX' maxDimY' (ShowableCString description') (ShowableCString label') (ShowableCString unit') (ShowableCString standardUnit') (ShowableCString displayUnit') (ShowableCString format') (ShowableCString minValue') (ShowableCString maxValue') (ShowableCString minAlarm') (ShowableCString maxAlarm') (ShowableCString writableAttrName') dispLevel' enumLabels') = do
-    putStrLn "poking HaskellAttributeInfo"
-    V.unsafeWith name' ((#poke AttributeInfo, name) ptr)
-    (#poke AttributeInfo, writable) ptr writable'
-    (#poke AttributeInfo, data_format) ptr dataFormat'
-    (#poke AttributeInfo, data_type) ptr dataType'
-    (#poke AttributeInfo, max_dim_x) ptr maxDimX'
-    (#poke AttributeInfo, max_dim_y) ptr maxDimY'
-    V.unsafeWith description' ((#poke AttributeInfo, description) ptr)
-    V.unsafeWith label' ((#poke AttributeInfo, label) ptr)
-    V.unsafeWith unit' ((#poke AttributeInfo, unit) ptr)
-    V.unsafeWith standardUnit' ((#poke AttributeInfo, standard_unit) ptr)
-    V.unsafeWith displayUnit' ((#poke AttributeInfo, display_unit) ptr)
-    V.unsafeWith format' ((#poke AttributeInfo, format) ptr)
-    V.unsafeWith minValue' ((#poke AttributeInfo, min_value) ptr)
-    V.unsafeWith maxValue' ((#poke AttributeInfo, max_value) ptr)
-    V.unsafeWith minAlarm' ((#poke AttributeInfo, min_alarm) ptr)
-    V.unsafeWith maxAlarm' ((#poke AttributeInfo, max_alarm) ptr)
-    V.unsafeWith writableAttrName' ((#poke AttributeInfo, writable_attr_name) ptr)
-    V.unsafeWith enumLabels' ((#poke AttributeInfo, enum_labels) ptr)
-    (#poke AttributeInfo, disp_level) ptr dispLevel'
-  
+instance GStorable HaskellAttributeInfo
+
 data HaskellDbDatum = HaskellDbDatum
-  { dbDatumPropertyName :: !VectorCString
+  { dbDatumPropertyName :: !CString
   , dbDatumIsEmpty :: !Bool
   , dbDatumWrongDataType :: !Bool
   , dbDatumDataType :: !HaskellTangoDataType
@@ -484,7 +390,7 @@ data HaskellAttributeData = HaskellAttributeData
   { dataFormat :: !HaskellDataFormat
   , dataQuality :: !HaskellDataQuality
   , nbRead :: !CLong
-  , name :: !ShowableCString
+  , name :: !CString
   , dimX :: !Int32
   , dimY :: !Int32
   , timeStamp :: !Timeval
@@ -512,16 +418,6 @@ data HaskellCommandInfo = HaskellCommandInfo
   , cmdOutTypeDesc :: !CString
   , cmdDisplayLevel :: !CInt
   } deriving(Show)
-
-cStringToVector :: CString -> IO VectorCString
-cStringToVector cstr = do
-  asString <- peekCString cstr
-  pure (V.fromList (castCharToCChar <$> asString))
-  
-cStringToShowableVector :: CString -> IO ShowableCString
-cStringToShowableVector cstr = do
-  asString <- peekCString cstr
-  pure (ShowableCString (V.fromList (castCharToCChar <$> asString)))
 
 instance Storable HaskellCommandInfo where
   sizeOf _ = (#{size CommandInfo})
@@ -558,12 +454,11 @@ instance Storable HaskellDbDatum where
   alignment _ = (#alignment DbDatum)
   peek ptr = do
     property_name' <- (#peek DbDatum, property_name) ptr
-    propertyNameAsVector <- cStringToVector property_name'
     data_type' <- (#peek DbDatum, data_type) ptr
     is_empty' <- (#peek DbDatum, is_empty) ptr
     wrong_data_type' <- (#peek DbDatum, wrong_data_type) ptr
     let withoutType = HaskellDbDatum
-                      propertyNameAsVector
+                      property_name'
                       is_empty'
                       wrong_data_type'
                       data_type'
@@ -591,7 +486,9 @@ instance Storable HaskellDbDatum where
       HaskellDevVarDoubleStringArray -> error "type double string array not supported in dbdatum"
       HaskellDevState -> error "type state not supported in dbdatum"
       HaskellConstDevString -> error "type const dev string not supported in dbdatum"
-      HaskellDevVarBooleanArray -> error ("encountered a property " <> show propertyNameAsVector <> " with type boolean array -- this is not supported (yet)")
+      HaskellDevVarBooleanArray -> do
+        propertyName <- peekCString property_name'
+        error ("encountered a property " <> show propertyName <> " with type boolean array -- this is not supported (yet)")
       HaskellDevUChar -> error "type unsigned char not supported in dbdatum"
       HaskellDevLong64 -> (withoutType . HaskellPropLong64) <$> ((#peek DbDatum, prop_data) ptr)
       HaskellDevULong64 -> (withoutType . HaskellPropULong64) <$> ((#peek DbDatum, prop_data) ptr)
@@ -600,7 +497,7 @@ instance Storable HaskellDbDatum where
       HaskellDevVarLong64Array -> (withoutType . HaskellPropLong64Array) <$> ((#peek DbDatum, prop_data) ptr)
       HaskellDevVarULong64Array -> (withoutType . HaskellPropULong64Array) <$> ((#peek DbDatum, prop_data) ptr)
   poke ptr haskellDbDatum = do
-    V.unsafeWith (dbDatumPropertyName haskellDbDatum) $ \namePtr -> (#poke DbDatum, property_name) ptr namePtr
+    (#poke DbDatum, property_name) ptr (dbDatumPropertyName haskellDbDatum)
     (#poke DbDatum, is_empty) ptr (dbDatumIsEmpty haskellDbDatum)
     (#poke DbDatum, wrong_data_type) ptr (dbDatumWrongDataType haskellDbDatum)
     (#poke DbDatum, data_type) ptr (dbDatumDataType haskellDbDatum)
@@ -620,7 +517,6 @@ instance Storable HaskellAttributeData where
     dim_x' <- (#peek AttributeData, dim_x) ptr
     dim_y' <- (#peek AttributeData, dim_y) ptr
     name' <- (#peek AttributeData, name) ptr
-    nameAsVector <- cStringToShowableVector name'
     nb_read' <- (#peek AttributeData, nb_read) ptr
     quality' <- (#peek AttributeData, quality) ptr
     data_format' <- (#peek AttributeData, data_format) ptr
@@ -629,7 +525,7 @@ instance Storable HaskellAttributeData where
                       data_format'
                       (qualityToHaskell quality')
                       nb_read'
-                      nameAsVector
+                      name'
                       dim_x'
                       dim_y'
                       time_stamp'
@@ -721,7 +617,7 @@ instance Storable HaskellAttributeData where
   poke ptr haskellAttributeData = do
     (#poke AttributeData, dim_x) ptr (dimX haskellAttributeData)
     (#poke AttributeData, dim_y) ptr (dimY haskellAttributeData)
-    V.unsafeWith (unShowable (name haskellAttributeData)) $ \namePtr -> (#poke AttributeData, name) ptr namePtr
+    (#poke AttributeData, name) ptr (name haskellAttributeData)
     (#poke AttributeData, data_type) ptr (dataType haskellAttributeData)
     case tangoAttributeData haskellAttributeData of
       HaskellAttributeDataBoolArray v -> (#poke AttributeData, attr_data) ptr v
@@ -861,128 +757,52 @@ data HaskellDevFailed a = HaskellDevFailed
     devFailedReason :: !a,
     devFailedOrigin :: !a,
     devFailedSeverity :: !CInt
-  } deriving(Functor, Foldable, Traversable)
+  } deriving(Functor, Foldable, Traversable, Generic)
+
+instance Storable a => GStorable (HaskellDevFailed a)
 
 data HaskellErrorStack = HaskellErrorStack
   { errorStackLength :: !Word32,
     errorStackSequence :: !(Ptr (HaskellDevFailed CString))
-  }
+  } deriving(Generic)
 
-instance Storable HaskellErrorStack where
-  sizeOf _ = (#size ErrorStack)
-  alignment _ = (#alignment ErrorStack)
-  peek ptr = do
-    length' <- (#peek ErrorStack, length) ptr
-    sequence' <- (#peek ErrorStack, sequence) ptr
-    pure (HaskellErrorStack length' sequence')
-  poke _ _ = error "HaskellErrorStack not pokeable"
-  
+instance GStorable HaskellErrorStack
+
 data HaskellDbData = HaskellDbData
-  { datums :: V.Vector HaskellDbDatum
-  } deriving(Show)
+  { dbDataLength :: Word32
+  , dbDataSequence :: Ptr HaskellDbDatum
+  } deriving(Show, Generic)
 
-instance Storable HaskellDbData where
-  sizeOf _ = (#size DbData)
-  alignment _ = (#alignment DbData)
-  peek ptr = do
-    length' :: CULong <- (#peek DbData, length) ptr
-    sequence' <- (#peek DbData, sequence) ptr
-    haskellSequence <- peekArray (fromIntegral length') sequence'
-    let vector = V.fromList haskellSequence
-    pure (HaskellDbData vector)
-  poke ptr (HaskellDbData content) = do
-    let len :: Word32
-        len = fromIntegral (V.length content)
-    (#poke DbData, length) ptr len
-    V.unsafeWith content $ \vptr -> (#poke DbData, sequence) ptr vptr
-
-instance Storable a => Storable (HaskellDevFailed a) where
-  sizeOf _ = (#size ErrorStack)
-  alignment _ = (#alignment ErrorStack)
-  peek ptr = do
-    desc' <- (#peek DevFailed, desc) ptr
-    reason' <- (#peek DevFailed, reason) ptr
-    origin' <- (#peek DevFailed, origin) ptr
-    severity' <- (#peek DevFailed, severity) ptr
-    pure (HaskellDevFailed desc' reason' origin' severity')
-  poke ptr (HaskellDevFailed desc' reason' origin' _severity) = do
-    (#poke DevFailed, desc) ptr desc'
-    (#poke DevFailed, reason) ptr reason'
-    (#poke DevFailed, origin) ptr origin'
+instance GStorable HaskellDbData
 
 data HaskellTangoVarArray a = HaskellTangoVarArray {
     varArrayLength :: Word32
   , varArrayValues :: Ptr a
-  } deriving(Show)
+  } deriving(Show, Generic)
 
-instance Storable a => Storable (HaskellTangoVarArray a) where
-  -- A random Var*Array, they should all have the same size and alignment
-  sizeOf _ = (#size VarDoubleArray)
-  alignment _ = (#alignment VarDoubleArray)
-  peek ptr = do
-    -- Same logic here, peek should use the same "distance" into the struct for all Var* structs
-    length' :: Word32 <- (#peek VarDoubleArray, length) ptr
-    sequence' <- (#peek VarDoubleArray, sequence) ptr
-    pure (HaskellTangoVarArray length' sequence')
-  poke ptr (HaskellTangoVarArray length' sequence') = do
-    (#poke VarDoubleArray, length) ptr length'
-    (#poke VarDoubleArray, sequence) ptr sequence'
+instance Storable a => GStorable (HaskellTangoVarArray a)
 
 
 data HaskellCommandInfoList = HaskellCommandInfoList {
     commandInfoLength :: Word32
-    , commandInfoSequence :: Ptr HaskellCommandInfo
-  } deriving(Show)
+  , commandInfoSequence :: Ptr HaskellCommandInfo
+  } deriving(Show, Generic)
 
-instance Storable HaskellCommandInfoList where
-  sizeOf _ = (#size CommandInfoList)
-  alignment _ = (#alignment CommandInfoList)
-  peek ptr = do
-    length' :: Word32 <- (#peek CommandInfoList, length) ptr
-    sequence' <- (#peek CommandInfoList, sequence) ptr
-    pure (HaskellCommandInfoList length' sequence')
-  poke ptr (HaskellCommandInfoList length' sequence') = do
-    (#poke CommandInfoList, length) ptr length'
-    (#poke CommandInfoList, sequence) ptr sequence'
-    
-newtype HaskellAttributeInfoList = HaskellAttributeInfoList {
-    attributeInfos :: V.Vector HaskellAttributeInfo
-  } deriving(Show)
+instance GStorable HaskellCommandInfoList
 
-instance Storable HaskellAttributeInfoList where
-  sizeOf _ = (#size AttributeInfoList)
-  alignment _ = (#alignment AttributeInfoList)
-  peek ptr = do
-    length' :: CULong <- (#peek AttributeInfoList, length) ptr
-    sequence' <- (#peek AttributeInfoList, sequence) ptr
-    haskellSequence <- peekArray (fromIntegral length') sequence'
-    let vector = V.fromList haskellSequence
-    pure (HaskellAttributeInfoList vector)
-  poke ptr (HaskellAttributeInfoList content) = do
-    let len :: Word32
-        len = fromIntegral (V.length content)
-    (#poke AttributeInfoList, length) ptr len
-    V.unsafeWith content $ \vptr -> (#poke AttributeInfoList, sequence) ptr vptr
+data HaskellAttributeInfoList = HaskellAttributeInfoList {
+    attributeInfoListLength :: Word32
+  , attributeInfoListSequence :: Ptr HaskellAttributeInfo
+  } deriving(Show, Generic)
 
-newtype HaskellAttributeDataList = HaskellAttributeDataList {
-    attributeDatas :: V.Vector HaskellAttributeData
-  } deriving(Show)
+instance GStorable HaskellAttributeInfoList
 
-instance Storable HaskellAttributeDataList where
-  sizeOf _ = (#size AttributeDataList)
-  alignment _ = (#alignment AttributeDataList)
-  peek ptr = do
-    length' :: CULong <- (#peek AttributeDataList, length) ptr
-    sequence' <- (#peek AttributeDataList, sequence) ptr
-    haskellSequence <- peekArray (fromIntegral length') sequence'
-    let vector = V.fromList haskellSequence
-    pure (HaskellAttributeDataList vector)
-  poke ptr (HaskellAttributeDataList content) = do
-    let len :: Word32
-        len = fromIntegral (V.length content)
-    (#poke AttributeDataList, length) ptr len
-    V.unsafeWith content $ \vptr -> (#poke AttributeDataList, sequence) ptr vptr
+data HaskellAttributeDataList = HaskellAttributeDataList {
+    attributeDataListLength :: Word32
+  , attributeDataListSequence :: Ptr HaskellAttributeData
+  } deriving(Show, Generic)
 
+instance GStorable HaskellAttributeDataList
 
 type DeviceProxyPtr = Ptr ()
 type TangoError = Ptr HaskellErrorStack
