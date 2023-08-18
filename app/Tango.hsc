@@ -64,7 +64,6 @@ module Tango(tango_create_device_proxy,
              HaskellTangoAttributeData(..),
              devSourceToInt,
              devSourceFromInt,
-             newDoubleArray,
              stringToVector
              ) where
 
@@ -191,9 +190,6 @@ data HaskellTangoPropertyData = HaskellPropBool !CBool
                               | HaskellPropDoubleArray !(HaskellTangoVarArray CDouble)
                               | HaskellPropStringArray !(HaskellTangoVarArray CString)
                               deriving(Show)
-
-newDoubleArray :: [CDouble] -> HaskellTangoAttributeData
-newDoubleArray = HaskellAttributeDataDoubleArray . HaskellTangoVarArray . V.fromList
 
 -- withStringArray :: [String] -> (V.Vector CString -> IO b) -> IO b
 -- withStringArray strings =
@@ -324,9 +320,9 @@ instance Storable HaskellDispLevel where
 
 data HaskellVarLongStringArray = HaskellVarLongStringArray
   { longLength :: !Word32
-  , longSequence :: !(V.Vector Word64)
+  , longSequence :: !(Ptr Word64)
   , longStringLength :: !Word32
-  , longStringSequence :: !(V.Vector CString)
+  , longStringSequence :: !(Ptr CString)
   } deriving(Show)
 
 instance Storable HaskellVarLongStringArray where
@@ -335,22 +331,20 @@ instance Storable HaskellVarLongStringArray where
   peek ptr = do
     long_length' <- ((#peek VarLongStringArray, long_length) ptr)
     long_sequence' <- ((#peek VarLongStringArray, long_sequence) ptr)
-    longSequenceVector <- V.fromList <$> peekArray (fromIntegral long_length') long_sequence'
     string_length' <- ((#peek VarLongStringArray, string_length) ptr)
     string_sequence' <- ((#peek VarLongStringArray, string_sequence) ptr)
-    stringSequenceVector <- V.fromList <$> peekArray (fromIntegral string_length') string_sequence'
-    pure (HaskellVarLongStringArray long_length' longSequenceVector string_length' stringSequenceVector)
+    pure (HaskellVarLongStringArray long_length' long_sequence' string_length' string_sequence')
   poke ptr (HaskellVarLongStringArray longLength' longSequence' stringLength' stringSequence') = do
     (#poke VarLongStringArray, long_length) ptr longLength'
-    V.unsafeWith longSequence' ((#poke VarLongStringArray, long_sequence) ptr)
+    (#poke VarLongStringArray, long_sequence) ptr longSequence'
     (#poke VarLongStringArray, string_length) ptr stringLength'
-    V.unsafeWith stringSequence' ((#poke VarLongStringArray, string_sequence) ptr)
+    (#poke VarLongStringArray, string_sequence) ptr stringSequence'
 
 data HaskellVarDoubleStringArray = HaskellVarDoubleStringArray
   { doubleLength :: !Word32
-  , doubleSequence :: !(V.Vector CDouble)
+  , doubleSequence :: !(Ptr CDouble)
   , doubleStringLength :: !Word32
-  , doubleStringSequence :: !(V.Vector CString)
+  , doubleStringSequence :: !(Ptr CString)
   } deriving(Show)
 
 instance Storable HaskellVarDoubleStringArray where
@@ -359,21 +353,19 @@ instance Storable HaskellVarDoubleStringArray where
   peek ptr = do
     double_length' <- ((#peek VarDoubleStringArray, double_length) ptr)
     double_sequence' <- ((#peek VarDoubleStringArray, double_sequence) ptr)
-    doubleSequenceVector <- V.fromList <$> peekArray (fromIntegral double_length') double_sequence'
     string_length' <- ((#peek VarDoubleStringArray, string_length) ptr)
     string_sequence' <- ((#peek VarDoubleStringArray, string_sequence) ptr)
-    stringSequenceVector <- V.fromList <$> peekArray (fromIntegral string_length') string_sequence'
-    pure (HaskellVarDoubleStringArray double_length' doubleSequenceVector string_length' stringSequenceVector)
+    pure (HaskellVarDoubleStringArray double_length' double_sequence' string_length' string_sequence')
   poke ptr (HaskellVarDoubleStringArray doubleLength' doubleSequence' stringLength' stringSequence') = do
     (#poke VarDoubleStringArray, double_length) ptr doubleLength'
-    V.unsafeWith doubleSequence' ((#poke VarDoubleStringArray, double_sequence) ptr)
+    (#poke VarDoubleStringArray, double_sequence) ptr doubleSequence'
     (#poke VarDoubleStringArray, string_length) ptr stringLength'
-    V.unsafeWith stringSequence' ((#poke VarDoubleStringArray, string_sequence) ptr)
+    (#poke VarDoubleStringArray, string_sequence) ptr stringSequence'
 
 data HaskellTangoDevEncoded = HaskellTangoDevEncoded
-  { devEncodedFormat :: !VectorCString
+  { devEncodedFormat :: !CString
   , devEncodedLength :: !Word32
-  , devEncodedData :: !(V.Vector Word8)
+  , devEncodedData :: !(Ptr Word8)
   } deriving(Show)
 
 instance Storable HaskellTangoDevEncoded where
@@ -381,15 +373,13 @@ instance Storable HaskellTangoDevEncoded where
   alignment _ = (#alignment TangoDevEncoded)
   peek ptr = do
     encoded_format' <- ((#peek TangoDevEncoded, encoded_format) ptr)
-    encodedFormatVector <- cStringToVector encoded_format'
     encoded_length' <- (#peek TangoDevEncoded, encoded_length) ptr
     encoded_data' <- (#peek TangoDevEncoded, encoded_data) ptr
-    encodedDataVector <- V.fromList <$> peekArray (fromIntegral encoded_length') encoded_data'
-    pure (HaskellTangoDevEncoded encodedFormatVector encoded_length' encodedDataVector)
+    pure (HaskellTangoDevEncoded encoded_format' encoded_length' encoded_data')
   poke ptr (HaskellTangoDevEncoded format' length' data') = do
-    V.unsafeWith format' ((#poke TangoDevEncoded, encoded_format) ptr)
+    (#poke TangoDevEncoded, encoded_format) ptr format'
     (#poke TangoDevEncoded, encoded_length) ptr length'
-    V.unsafeWith data' ((#poke TangoDevEncoded, encoded_data) ptr)
+    (#poke TangoDevEncoded, encoded_data) ptr data'
   
 
 type VectorCString = V.Vector CChar
@@ -514,12 +504,12 @@ haskellDisplayLevelExpert :: CInt
 haskellDisplayLevelExpert = 1
 
 data HaskellCommandInfo = HaskellCommandInfo
-  { cmdName :: !ShowableCString
+  { cmdName :: !CString
   , cmdTag :: !Int32
   , cmdInType :: !Int32
   , cmdOutType :: !Int32
-  , cmdInTypeDesc :: !ShowableCString
-  , cmdOutTypeDesc :: !ShowableCString
+  , cmdInTypeDesc :: !CString
+  , cmdOutTypeDesc :: !CString
   , cmdDisplayLevel :: !CInt
   } deriving(Show)
 
@@ -538,24 +528,21 @@ instance Storable HaskellCommandInfo where
   alignment _ = (#alignment CommandInfo)
   peek ptr = do
     cmd_name' <- (#peek CommandInfo, cmd_name) ptr
-    cmdNameAsVector <- cStringToShowableVector cmd_name'
     cmd_tag' <- (#peek CommandInfo, cmd_tag) ptr
     in_type' <- (#peek CommandInfo, in_type) ptr
     out_type' <- (#peek CommandInfo, out_type) ptr
     in_type_desc' <- (#peek CommandInfo, in_type_desc) ptr
-    inTypeDescAsVector <- cStringToShowableVector in_type_desc'
     out_type_desc' <- (#peek CommandInfo, out_type_desc) ptr
-    outTypeDescAsVector <- cStringToShowableVector out_type_desc'
     disp_level' <- (#peek CommandInfo, disp_level) ptr
-    pure (HaskellCommandInfo cmdNameAsVector cmd_tag' in_type' out_type' inTypeDescAsVector outTypeDescAsVector disp_level')
+    pure (HaskellCommandInfo cmd_name' cmd_tag' in_type' out_type' in_type_desc' out_type_desc' disp_level')
   -- I see no reason why we'd ever poke this (i.e. write an info struct)
-  poke ptr (HaskellCommandInfo (ShowableCString cmd_name') cmd_tag' in_type' out_type' (ShowableCString in_type_desc') (ShowableCString out_type_desc') disp_level') = do
-    V.unsafeWith cmd_name' ((#poke CommandInfo, cmd_name) ptr)
+  poke ptr (HaskellCommandInfo cmd_name' cmd_tag' in_type' out_type' in_type_desc' out_type_desc' disp_level') = do
+    (#poke CommandInfo, cmd_name) ptr cmd_name'
     (#poke CommandInfo, cmd_tag) ptr cmd_tag'
     (#poke CommandInfo, in_type) ptr in_type'
     (#poke CommandInfo, out_type) ptr out_type'
-    V.unsafeWith in_type_desc' ((#poke CommandInfo, in_type_desc) ptr)
-    V.unsafeWith out_type_desc' ((#poke CommandInfo, out_type_desc) ptr)
+    (#poke CommandInfo, in_type_desc) ptr in_type_desc'
+    (#poke CommandInfo, out_type_desc) ptr out_type_desc'
     (#poke CommandInfo, disp_level) ptr disp_level'
     
 
@@ -923,9 +910,10 @@ instance Storable a => Storable (HaskellDevFailed a) where
     (#poke DevFailed, reason) ptr reason'
     (#poke DevFailed, origin) ptr origin'
 
-newtype HaskellTangoVarArray a = HaskellTangoVarArray {
-    varArrayValues :: V.Vector a
-    } deriving(Show)
+data HaskellTangoVarArray a = HaskellTangoVarArray {
+    varArrayLength :: Word32
+  , varArrayValues :: Ptr a
+  } deriving(Show)
 
 instance Storable a => Storable (HaskellTangoVarArray a) where
   -- A random Var*Array, they should all have the same size and alignment
@@ -933,35 +921,29 @@ instance Storable a => Storable (HaskellTangoVarArray a) where
   alignment _ = (#alignment VarDoubleArray)
   peek ptr = do
     -- Same logic here, peek should use the same "distance" into the struct for all Var* structs
-    length' :: CULong <- (#peek VarDoubleArray, length) ptr
+    length' :: Word32 <- (#peek VarDoubleArray, length) ptr
     sequence' <- (#peek VarDoubleArray, sequence) ptr
-    haskellSequence <- peekArray (fromIntegral length') sequence'
-    pure (HaskellTangoVarArray (V.fromList haskellSequence))
-  poke ptr (HaskellTangoVarArray content) = do
-    let len :: Word32
-        len = fromIntegral (V.length content)
-    (#poke VarDoubleArray, length) ptr len
-    V.unsafeWith content $ \vptr -> (#poke VarDoubleArray, sequence) ptr vptr
+    pure (HaskellTangoVarArray length' sequence')
+  poke ptr (HaskellTangoVarArray length' sequence') = do
+    (#poke VarDoubleArray, length) ptr length'
+    (#poke VarDoubleArray, sequence) ptr sequence'
 
 
-newtype HaskellCommandInfoList = HaskellCommandInfoList {
-    commandInfos :: V.Vector HaskellCommandInfo
+data HaskellCommandInfoList = HaskellCommandInfoList {
+    commandInfoLength :: Word32
+    , commandInfoSequence :: Ptr HaskellCommandInfo
   } deriving(Show)
 
 instance Storable HaskellCommandInfoList where
   sizeOf _ = (#size CommandInfoList)
   alignment _ = (#alignment CommandInfoList)
   peek ptr = do
-    length' :: CULong <- (#peek CommandInfoList, length) ptr
+    length' :: Word32 <- (#peek CommandInfoList, length) ptr
     sequence' <- (#peek CommandInfoList, sequence) ptr
-    haskellSequence <- peekArray (fromIntegral length') sequence'
-    let vector = V.fromList haskellSequence
-    pure (HaskellCommandInfoList vector)
-  poke ptr (HaskellCommandInfoList content) = do
-    let len :: Word32
-        len = fromIntegral (V.length content)
-    (#poke CommandInfoList, length) ptr len
-    V.unsafeWith content $ \vptr -> (#poke CommandInfoList, sequence) ptr vptr
+    pure (HaskellCommandInfoList length' sequence')
+  poke ptr (HaskellCommandInfoList length' sequence') = do
+    (#poke CommandInfoList, length) ptr length'
+    (#poke CommandInfoList, sequence) ptr sequence'
     
 newtype HaskellAttributeInfoList = HaskellAttributeInfoList {
     attributeInfos :: V.Vector HaskellAttributeInfo

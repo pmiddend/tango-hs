@@ -19,7 +19,7 @@ import Tango
     HaskellAttributeDataList (..),
     HaskellAttributeInfoList (..),
     HaskellCommandData (HaskellCommandData),
-    HaskellCommandInfoList (commandInfos),
+    HaskellCommandInfoList (commandInfoLength, commandInfoSequence),
     HaskellDataFormat (..),
     HaskellDataQuality (..),
     HaskellDevFailed (..),
@@ -28,11 +28,10 @@ import Tango
     HaskellTangoAttributeData (HaskellAttributeDataStringArray),
     HaskellTangoCommandData (HaskellCommandCString, HaskellCommandDouble),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
-    HaskellTangoVarArray (HaskellTangoVarArray, varArrayValues),
+    HaskellTangoVarArray (HaskellTangoVarArray, varArrayLength, varArrayValues),
     Timeval (Timeval),
     devSourceFromInt,
     devSourceToInt,
-    newDoubleArray,
     stringToVector,
     tangoCommandData,
     tango_command_inout,
@@ -155,7 +154,8 @@ main = do
       checkResult (tango_command_list_query proxyPtr commandInfoListPtr)
       commandInfoList <- peek commandInfoListPtr
       putStrLn "=> list retrieved, starting list:"
-      forM_ (V.toList (commandInfos commandInfoList)) $ \ci -> do
+      commandInfoArray <- peekArray (fromIntegral (commandInfoLength commandInfoList)) (commandInfoSequence commandInfoList)
+      forM_ commandInfoArray $ \ci -> do
         hPutStrLn stderr ("  -> info list element: " <> show ci)
       putStrLn "=> finished listing"
       tango_free_CommandInfoList commandInfoListPtr
@@ -191,84 +191,85 @@ main = do
       checkResult (tango_get_attribute_list proxyPtr stringArrayPtr)
       stringArray <- peek stringArrayPtr
       putStrLn ("<= attribute list retrieved, starting list:")
-      haskellStrings <- traverse peekCString (V.toList (varArrayValues stringArray))
+      cStringList <- peekArray (fromIntegral (varArrayLength stringArray)) (varArrayValues stringArray)
+      haskellStrings <- traverse peekCString cStringList
       forM_ haskellStrings (\str -> putStrLn ("  -> list element: " <> str))
       putStrLn "=> finished listing"
       tango_free_VarStringArray stringArrayPtr
       pure haskellStrings
 
-    -- putStrLn ("=> reading all attributes")
+    -- -- putStrLn ("=> reading all attributes")
 
-    -- forM_ (filter (not . (`elem` ["no_value", "throw_exception"])) attributeNames) $ \attributeNameHaskell -> do
-    --   withCString attributeNameHaskell $ \attributeName -> do
-    --     putStrLn ("  <= reading " <> attributeNameHaskell)
-    --     alloca $ \argoutPtr -> do
-    --       checkResult (tango_read_attribute proxyPtr attributeName argoutPtr)
-    --       argout <- peek argoutPtr
-    --       putStrLn ("  => result " <> show argout)
-    --       tango_free_AttributeData argoutPtr
+    -- -- forM_ (filter (not . (`elem` ["no_value", "throw_exception"])) attributeNames) $ \attributeNameHaskell -> do
+    -- --   withCString attributeNameHaskell $ \attributeName -> do
+    -- --     putStrLn ("  <= reading " <> attributeNameHaskell)
+    -- --     alloca $ \argoutPtr -> do
+    -- --       checkResult (tango_read_attribute proxyPtr attributeName argoutPtr)
+    -- --       argout <- peek argoutPtr
+    -- --       putStrLn ("  => result " <> show argout)
+    -- --       tango_free_AttributeData argoutPtr
 
-    -- putStrLn ("<= read all attributes")
+    -- -- putStrLn ("<= read all attributes")
 
-    putStrLn ("=> reading attribute configurations")
-    bracket (traverse newCString (attributeNames)) (traverse free) $ \attributeNamesCStrings ->
-      with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
-        checkResult (tango_get_attribute_config proxyPtr stringArrayPtr attributeInfoListPtr)
-        stringArray <- peek stringArrayPtr
-        putStrLn ("<= read attribute configurations, starting list of attribute names (?):")
-        forM_ (V.toList (varArrayValues stringArray)) $ \cstring -> do
-          str <- peekCString cstring
-          putStrLn ("  -> list element: " <> str)
-        putStrLn ("=> finish listing names")
-        infos <- peek attributeInfoListPtr
-        putStrLn ("<= read attribute configurations, starting list of attribute configurations:")
-        forM_ (V.toList (attributeInfos infos)) $ \info -> do
-          putStrLn ("  -> list element: " <> show info)
-        putStrLn ("=> finish listing configurations")
+    -- putStrLn ("=> reading attribute configurations")
+    -- bracket (traverse newCString (attributeNames)) (traverse free) $ \attributeNamesCStrings ->
+    --   with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
+    --     checkResult (tango_get_attribute_config proxyPtr stringArrayPtr attributeInfoListPtr)
+    --     stringArray <- peek stringArrayPtr
+    --     putStrLn ("<= read attribute configurations, starting list of attribute names (?):")
+    --     forM_ (V.toList (varArrayValues stringArray)) $ \cstring -> do
+    --       str <- peekCString cstring
+    --       putStrLn ("  -> list element: " <> str)
+    --     putStrLn ("=> finish listing names")
+    --     infos <- peek attributeInfoListPtr
+    --     putStrLn ("<= read attribute configurations, starting list of attribute configurations:")
+    --     forM_ (V.toList (attributeInfos infos)) $ \info -> do
+    --       putStrLn ("  -> list element: " <> show info)
+    --     putStrLn ("=> finish listing configurations")
 
-    --   with (HaskellAttributeData HaskellScalar HaskellValid 0 (stringToVector "double_scalar") 1 0 (Timeval 0 0) HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
-    --     hPutStrLn stderr "writing attribute"
-    --     attrWriteResult <- tango_write_attribute proxyPtr argoutPtr
-    --     _ <- peek argoutPtr
-    --     putStrLn ("read attribute " <> show attrWriteResult)
+    -- --   with (HaskellAttributeData HaskellScalar HaskellValid 0 (stringToVector "double_scalar") 1 0 (Timeval 0 0) HaskellDevDouble (newDoubleArray [1338.0])) $ \argoutPtr -> do
+    -- --     hPutStrLn stderr "writing attribute"
+    -- --     attrWriteResult <- tango_write_attribute proxyPtr argoutPtr
+    -- --     _ <- peek argoutPtr
+    -- --     putStrLn ("read attribute " <> show attrWriteResult)
 
-    -- let attributesToQuery :: [String]
-    --     attributesToQuery = ["double_scalar"]
+    -- -- let attributesToQuery :: [String]
+    -- --     attributesToQuery = ["double_scalar"]
 
-    -- bracket (traverse newCString attributesToQuery) (traverse free) $ \attributeNamesCStrings ->
-    --   with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \attributeNames -> alloca $ \dataListPtr -> do
-    --     checkResult (tango_read_attributes proxyPtr attributeNames dataListPtr)
-    --     hPutStrLn stderr "begin attribute data list"
-    --     dataList <- peek dataListPtr
-    --     forM_ (V.toList (attributeDatas dataList)) $ \data' -> do
-    --       hPutStrLn stderr ("attribute data info: " <> show data')
-    --     hPutStrLn stderr "end attribute data list"
+    -- -- bracket (traverse newCString attributesToQuery) (traverse free) $ \attributeNamesCStrings ->
+    -- --   with (HaskellTangoVarArray (V.fromList attributeNamesCStrings)) $ \attributeNames -> alloca $ \dataListPtr -> do
+    -- --     checkResult (tango_read_attributes proxyPtr attributeNames dataListPtr)
+    -- --     hPutStrLn stderr "begin attribute data list"
+    -- --     dataList <- peek dataListPtr
+    -- --     forM_ (V.toList (attributeDatas dataList)) $ \data' -> do
+    -- --       hPutStrLn stderr ("attribute data info: " <> show data')
+    -- --     hPutStrLn stderr "end attribute data list"
 
-    -- alloca $ \dbProxyPtr -> do
-    --   checkResult (tango_create_database_proxy dbProxyPtr)
+    -- -- alloca $ \dbProxyPtr -> do
+    -- --   checkResult (tango_create_database_proxy dbProxyPtr)
 
-    --   dbProxy <- peek dbProxyPtr
-    --   alloca $ \dbDatumPtr -> do
-    --     withCString "*" $ \filterStr -> do
-    --       hPutStrLn stderr "getting db datum"
-    --       checkResult (tango_get_device_exported dbProxy filterStr dbDatumPtr)
-    --       dbDatum <- peek dbDatumPtr
-    --       hPutStrLn stderr ("db datum for name filter: " <> show dbDatum)
-    --       checkResult (tango_get_device_exported_for_class dbProxy filterStr dbDatumPtr)
-    --       dbDatum' <- peek dbDatumPtr
-    --       hPutStrLn stderr ("db datum for class filter: " <> show dbDatum')
-    --       checkResult (tango_get_object_list dbProxy filterStr dbDatumPtr)
-    --       dbDatum'' <- peek dbDatumPtr
-    --       hPutStrLn stderr ("db get object list: " <> show dbDatum'')
-    --       checkResult (tango_get_object_property_list dbProxy filterStr filterStr dbDatumPtr)
-    --       dbDatum''' <- peek dbDatumPtr
-    --       hPutStrLn stderr ("db get object property list: " <> show dbDatum''')
+    -- --   dbProxy <- peek dbProxyPtr
+    -- --   alloca $ \dbDatumPtr -> do
+    -- --     withCString "*" $ \filterStr -> do
+    -- --       hPutStrLn stderr "getting db datum"
+    -- --       checkResult (tango_get_device_exported dbProxy filterStr dbDatumPtr)
+    -- --       dbDatum <- peek dbDatumPtr
+    -- --       hPutStrLn stderr ("db datum for name filter: " <> show dbDatum)
+    -- --       checkResult (tango_get_device_exported_for_class dbProxy filterStr dbDatumPtr)
+    -- --       dbDatum' <- peek dbDatumPtr
+    -- --       hPutStrLn stderr ("db datum for class filter: " <> show dbDatum')
+    -- --       checkResult (tango_get_object_list dbProxy filterStr dbDatumPtr)
+    -- --       dbDatum'' <- peek dbDatumPtr
+    -- --       hPutStrLn stderr ("db get object list: " <> show dbDatum'')
+    -- --       checkResult (tango_get_object_property_list dbProxy filterStr filterStr dbDatumPtr)
+    -- --       dbDatum''' <- peek dbDatumPtr
+    -- --       hPutStrLn stderr ("db get object property list: " <> show dbDatum''')
 
-    --       alloca $ \dbDataPtr -> do
-    --         checkResult (tango_get_property dbProxy filterStr dbDataPtr)
-    --         dbData <- peek dbDataPtr
-    --         hPutStrLn stderr ("db get property data: " <> show dbData)
+    -- --       alloca $ \dbDataPtr -> do
+    -- --         checkResult (tango_get_property dbProxy filterStr dbDataPtr)
+    -- --         dbData <- peek dbDataPtr
+    -- --         hPutStrLn stderr ("db get property data: " <> show dbData)
 
-    --   checkResult (tango_delete_database_proxy dbProxy)
+    -- --   checkResult (tango_delete_database_proxy dbProxy)
 
     void (tango_delete_device_proxy proxyPtr)
