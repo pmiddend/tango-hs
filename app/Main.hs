@@ -5,6 +5,7 @@ module Main where
 
 import Control.Exception (bracket)
 import Control.Monad (forM_, void, when)
+import Data.Text (unpack)
 import Foreign
   ( Storable (peek),
     alloca,
@@ -15,7 +16,8 @@ import Foreign.Marshal.Array (withArray)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
 import Tango
-  ( HaskellAttributeData (HaskellAttributeData),
+  ( DeviceProxyPtr,
+    HaskellAttributeData (HaskellAttributeData),
     HaskellAttributeDataList (..),
     HaskellAttributeInfoList (..),
     HaskellCommandData (HaskellCommandData),
@@ -63,6 +65,7 @@ import Tango
     tango_unlock,
     tango_write_attribute,
   )
+import TangoHL (getTimeoutMillis, setTimeoutMillis, withDeviceProxy)
 
 checkResult :: IO (Ptr HaskellErrorStack) -> IO ()
 checkResult action = do
@@ -80,8 +83,13 @@ checkResult action = do
     errorLines <- traverse formatDevFailed stackItems
     fail ("error in result: " <> unlines errorLines)
 
-main :: IO ()
-main = do
+main = withDeviceProxy "sys/tg_test/1" $ \proxyPtr -> do
+  setTimeoutMillis proxyPtr 1337
+  millis <- getTimeoutMillis proxyPtr
+  putStrLn ("millis: " <> show millis)
+
+main2 :: IO ()
+main2 = do
   let proxyAddress = "sys/tg_test/1"
   putStrLn ("<= creating proxy for " <> proxyAddress)
   alloca $ \proxyPtrPtr -> do

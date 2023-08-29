@@ -10,6 +10,7 @@ module Tango(tango_create_device_proxy,
              tango_delete_device_proxy,
              tango_read_attribute,
              tango_write_attribute,
+             HaskellTangoDevState(..),
              tango_command_inout,
              tango_free_AttributeData,
              tango_free_CommandData,
@@ -115,7 +116,8 @@ devSourceFromInt 0 = Dev
 devSourceFromInt 1 = Cache
 devSourceFromInt _ = CacheDev
   
-data HaskellTangoCommandData = HaskellCommandBool !CBool
+data HaskellTangoCommandData = HaskellCommandVoid
+                             | HaskellCommandBool !CBool
                              | HaskellCommandInt16 !CShort
                              | HaskellCommandUInt16 !CUShort
                              | HaskellCommandInt32 !CInt
@@ -640,6 +642,7 @@ instance Storable HaskellCommandData where
   peek ptr = do
     data_type' <- (#peek CommandData, arg_type) ptr
     case data_type' of
+      HaskellDevVoid -> pure (HaskellCommandData data_type' HaskellCommandVoid)
       HaskellDevBoolean -> do
         cmd_data' <- (#peek CommandData, cmd_data) ptr
         pure (HaskellCommandData data_type' (HaskellCommandBool cmd_data'))
@@ -724,6 +727,7 @@ instance Storable HaskellCommandData where
   poke ptr (HaskellCommandData argType' tangoCommandData') = do
     (#poke CommandData, arg_type) ptr argType'
     case tangoCommandData' of
+      HaskellCommandVoid -> pure ()
       HaskellCommandBool v -> (#poke CommandData, cmd_data) ptr v
       HaskellCommandInt16 v -> (#poke CommandData, cmd_data) ptr v
       HaskellCommandUInt16 v -> (#poke CommandData, cmd_data) ptr v
@@ -757,7 +761,7 @@ data HaskellDevFailed a = HaskellDevFailed
     devFailedReason :: !a,
     devFailedOrigin :: !a,
     devFailedSeverity :: !CInt
-  } deriving(Functor, Foldable, Traversable, Generic)
+  } deriving(Functor, Foldable, Traversable, Generic, Show)
 
 instance Storable a => GStorable (HaskellDevFailed a)
 

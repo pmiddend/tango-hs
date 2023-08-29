@@ -1,3 +1,0 @@
-cradle:
-  cabal:
-      component: "haskell-json-schema-to-elm"

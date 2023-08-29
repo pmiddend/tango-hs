@@ -22,7 +22,7 @@ common warnings
 executable tango-hs-testprogram
     import:           warnings
     main-is:          Main.hs
-    other-modules: Tango
+    other-modules: Tango, TangoHL
     build-depends:    base
                     , text
                     , derive-storable
