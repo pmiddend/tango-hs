@@ -1,0 +1,14 @@
+module AmarcordApi.Types.JsonCreateAttributoInput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonCreateAttributoInput
+instance Show JsonCreateAttributoInput
+instance Eq JsonCreateAttributoInput
+instance FromJSON JsonCreateAttributoInput
+instance ToJSON JsonCreateAttributoInput
+data JsonCreateAttributoInputAttributoType'Variants
+instance Show JsonCreateAttributoInputAttributoType'Variants
+instance Eq JsonCreateAttributoInputAttributoType'Variants
+instance FromJSON JsonCreateAttributoInputAttributoType'Variants
+instance ToJSON JsonCreateAttributoInputAttributoType'Variants

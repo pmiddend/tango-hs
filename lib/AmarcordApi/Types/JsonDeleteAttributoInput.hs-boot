@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonDeleteAttributoInput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonDeleteAttributoInput
+instance Show JsonDeleteAttributoInput
+instance Eq JsonDeleteAttributoInput
+instance FromJSON JsonDeleteAttributoInput
+instance ToJSON JsonDeleteAttributoInput

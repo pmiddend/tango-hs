@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonUserConfigurationSingleOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonUserConfigurationSingleOutput
+instance Show JsonUserConfigurationSingleOutput
+instance Eq JsonUserConfigurationSingleOutput
+instance FromJSON JsonUserConfigurationSingleOutput
+instance ToJSON JsonUserConfigurationSingleOutput

@@ -19,15 +19,220 @@ extra-doc-files:    CHANGELOG.md
 common warnings
     ghc-options: -Wall
 
-executable tango-hs-testprogram
-    import:           warnings
-    main-is:          Main.hs
-    other-modules: Tango, TangoHL
-    build-depends:    base
-                    , text
-                    , derive-storable
-    hs-source-dirs:   app
-    -- include-dirs: c_tango/src
-    hsc2hs-options: --cc g++ --lflag=-lstdc++ -k -DCABAL_BINDGEN=1
+executable chef
+    import:            warnings
+    main-is:           Chef.hs
+    other-modules:
+      Tango
+      TangoHL
+      -- from here on: copy & paste
+      AmarcordApi
+      AmarcordApi.Operations.ReadAnalysisResultsApiAnalysisAnalysisResultsBeamtimeIdGet
+      AmarcordApi.Operations.CreateAttributoApiAttributiPost
+      AmarcordApi.Operations.DeleteAttributoApiAttributiDelete
+      AmarcordApi.Operations.UpdateAttributoApiAttributiPatch
+      AmarcordApi.Operations.CreateAttributiFromSchemaApiAttributiSchemaPost
+      AmarcordApi.Operations.ReadAttributiApiAttributiBeamtimeIdGet
+      AmarcordApi.Operations.ReadBeamtimesApiBeamtimesGet
+      AmarcordApi.Operations.CreateBeamtimeApiBeamtimesPost
+      AmarcordApi.Operations.UpdateBeamtimeApiBeamtimesPatch
+      AmarcordApi.Operations.ReadBeamtimeApiBeamtimesBeamtimeIdGet
+      AmarcordApi.Operations.CreateChemicalApiChemicalsPost
+      AmarcordApi.Operations.DeleteChemicalApiChemicalsDelete
+      AmarcordApi.Operations.UpdateChemicalApiChemicalsPatch
+      AmarcordApi.Operations.ReadChemicalsApiChemicalsBeamtimeIdGet
+      AmarcordApi.Operations.CreateDataSetApiDataSetsPost
+      AmarcordApi.Operations.DeleteDataSetApiDataSetsDelete
+      AmarcordApi.Operations.CreateDataSetFromRunApiDataSetsFromRunPost
+      AmarcordApi.Operations.ReadDataSetsApiDataSetsBeamtimeIdGet
+      AmarcordApi.Operations.CreateEventApiEventsPost
+      AmarcordApi.Operations.DeleteEventApiEventsDelete
+      AmarcordApi.Operations.ReadEventsApiEventsBeamtimeIdGet
+      AmarcordApi.Operations.CreateExperimentTypeApiExperimentTypesPost
+      AmarcordApi.Operations.DeleteExperimentTypeApiExperimentTypesDelete
+      AmarcordApi.Operations.ChangeCurrentRunExperimentTypeApiExperimentTypesChangeForRunPost
+      AmarcordApi.Operations.ReadExperimentTypesApiExperimentTypesBeamtimeIdGet
+      AmarcordApi.Operations.CreateFileApiFilesPost
+      AmarcordApi.Operations.DeleteFileApiFilesDelete
+      AmarcordApi.Operations.CreateFileSimpleApiFilesSimpleExtensionPost
+      AmarcordApi.Operations.IndexingJobUpdateApiIndexingIndexingResultIdPost
+      AmarcordApi.Operations.CreateLiveStreamSnapshotApiLiveStreamSnapshotBeamtimeIdGet
+      AmarcordApi.Operations.UpdateLiveStreamApiLiveStreamBeamtimeIdPost
+      AmarcordApi.Operations.StartMergeJobForDataSetApiMergingDataSetIdStartPost
+      AmarcordApi.Operations.MergeJobFinishedApiMergingMergeResultIdPost
+      AmarcordApi.Operations.CreateRefinementResultApiRefinementResultsPost
+      AmarcordApi.Operations.ReadRunAnalysisApiRunAnalysisBeamtimeIdGet
+      AmarcordApi.Operations.UpdateRunApiRunsPatch
+      AmarcordApi.Operations.ReadRunsBulkApiRunsBulkPost
+      AmarcordApi.Operations.UpdateRunsBulkApiRunsBulkPatch
+      AmarcordApi.Operations.StopLatestRunApiRunsStopLatestBeamtimeIdGet
+      AmarcordApi.Operations.ReadRunsApiRunsBeamtimeIdGet
+      AmarcordApi.Operations.CreateOrUpdateRunApiRunsRunExternalIdPost
+      AmarcordApi.Operations.StartRunApiRunsRunExternalIdStartBeamtimeIdGet
+      AmarcordApi.Operations.UpdateBeamtimeScheduleApiSchedulePost
+      AmarcordApi.Operations.GetBeamtimeScheduleApiScheduleBeamtimeIdGet
+      AmarcordApi.Operations.CheckStandardUnitApiUnitPost
+      AmarcordApi.Operations.ReadUserConfigurationSingleApiUserConfigBeamtimeId_KeyGet
+      AmarcordApi.Operations.UpdateUserConfigurationSingleApiUserConfigBeamtimeId_Key_ValuePatch
+      AmarcordApi.Types
+      AmarcordApi.TypeAlias
+      AmarcordApi.Types.AssociatedTable
+      AmarcordApi.Types.ChemicalType
+      AmarcordApi.Types.HTTPValidationError
+      AmarcordApi.Types.JSONSchemaArray
+      AmarcordApi.Types.JSONSchemaBoolean
+      AmarcordApi.Types.JSONSchemaInteger
+      AmarcordApi.Types.JSONSchemaNumber
+      AmarcordApi.Types.JSONSchemaString
+      AmarcordApi.Types.JsonAnalysisDataSet
+      AmarcordApi.Types.JsonAnalysisExperimentType
+      AmarcordApi.Types.JsonAnalysisRun
+      AmarcordApi.Types.JsonAttributiIdAndRole
+      AmarcordApi.Types.JsonAttributo
+      AmarcordApi.Types.JsonAttributoBulkValue
+      AmarcordApi.Types.JsonAttributoValue
+      AmarcordApi.Types.JsonBeamtime
+      AmarcordApi.Types.JsonBeamtimeOutput
+      AmarcordApi.Types.JsonBeamtimeSchedule
+      AmarcordApi.Types.JsonBeamtimeScheduleOutput
+      AmarcordApi.Types.JsonBeamtimeScheduleRow
+      AmarcordApi.Types.JsonChangeRunExperimentType
+      AmarcordApi.Types.JsonChangeRunExperimentTypeOutput
+      AmarcordApi.Types.JsonCheckStandardUnitInput
+      AmarcordApi.Types.JsonCheckStandardUnitOutput
+      AmarcordApi.Types.JsonChemical
+      AmarcordApi.Types.JsonChemicalIdAndName
+      AmarcordApi.Types.JsonChemicalWithId
+      AmarcordApi.Types.JsonChemicalWithoutId
+      AmarcordApi.Types.JsonCreateAttributiFromSchemaInput
+      AmarcordApi.Types.JsonCreateAttributiFromSchemaOutput
+      AmarcordApi.Types.JsonCreateAttributiFromSchemaSingleAttributo
+      AmarcordApi.Types.JsonCreateAttributoInput
+      AmarcordApi.Types.JsonCreateAttributoOutput
+      AmarcordApi.Types.JsonCreateChemicalOutput
+      AmarcordApi.Types.JsonCreateDataSetFromRun
+      AmarcordApi.Types.JsonCreateDataSetFromRunOutput
+      AmarcordApi.Types.JsonCreateDataSetInput
+      AmarcordApi.Types.JsonCreateDataSetOutput
+      AmarcordApi.Types.JsonCreateExperimentTypeInput
+      AmarcordApi.Types.JsonCreateExperimentTypeOutput
+      AmarcordApi.Types.JsonCreateFileOutput
+      AmarcordApi.Types.JsonCreateLiveStreamSnapshotOutput
+      AmarcordApi.Types.JsonCreateOrUpdateRun
+      AmarcordApi.Types.JsonCreateOrUpdateRunOutput
+      AmarcordApi.Types.JsonCreateRefinementResultInput
+      AmarcordApi.Types.JsonCreateRefinementResultOutput
+      AmarcordApi.Types.JsonDataSet
+      AmarcordApi.Types.JsonDeleteAttributoInput
+      AmarcordApi.Types.JsonDeleteAttributoOutput
+      AmarcordApi.Types.JsonDeleteChemicalInput
+      AmarcordApi.Types.JsonDeleteChemicalOutput
+      AmarcordApi.Types.JsonDeleteDataSetInput
+      AmarcordApi.Types.JsonDeleteDataSetOutput
+      AmarcordApi.Types.JsonDeleteEventInput
+      AmarcordApi.Types.JsonDeleteEventOutput
+      AmarcordApi.Types.JsonDeleteExperimentType
+      AmarcordApi.Types.JsonDeleteExperimentTypeOutput
+      AmarcordApi.Types.JsonDeleteFileInput
+      AmarcordApi.Types.JsonDeleteFileOutput
+      AmarcordApi.Types.JsonEvent
+      AmarcordApi.Types.JsonEventInput
+      AmarcordApi.Types.JsonEventTopLevelInput
+      AmarcordApi.Types.JsonEventTopLevelOutput
+      AmarcordApi.Types.JsonExperimentType
+      AmarcordApi.Types.JsonExperimentTypeAndRuns
+      AmarcordApi.Types.JsonFileOutput
+      AmarcordApi.Types.JsonIndexingFom
+      AmarcordApi.Types.JsonIndexingJobUpdateOutput
+      AmarcordApi.Types.JsonIndexingResult
+      AmarcordApi.Types.JsonIndexingResultRootJson
+      AmarcordApi.Types.JsonIndexingStatistic
+      AmarcordApi.Types.JsonMergeJobUpdateOutput
+      AmarcordApi.Types.JsonMergeParameters
+      AmarcordApi.Types.JsonMergeResult
+      AmarcordApi.Types.JsonMergeResultRootJson
+      AmarcordApi.Types.JsonMergeResultStateDone
+      AmarcordApi.Types.JsonMergeResultStateError
+      AmarcordApi.Types.JsonMergeResultStateQueued
+      AmarcordApi.Types.JsonMergeResultStateRunning
+      AmarcordApi.Types.JsonPolarisation
+      AmarcordApi.Types.JsonReadAnalysisResults
+      AmarcordApi.Types.JsonReadAttributi
+      AmarcordApi.Types.JsonReadBeamtime
+      AmarcordApi.Types.JsonReadChemicals
+      AmarcordApi.Types.JsonReadDataSets
+      AmarcordApi.Types.JsonReadEvents
+      AmarcordApi.Types.JsonReadExperimentTypes
+      AmarcordApi.Types.JsonReadRunAnalysis
+      AmarcordApi.Types.JsonReadRuns
+      AmarcordApi.Types.JsonReadRunsBulkInput
+      AmarcordApi.Types.JsonReadRunsBulkOutput
+      AmarcordApi.Types.JsonRefinementResult
+      AmarcordApi.Types.JsonRun
+      AmarcordApi.Types.JsonRunAnalysisIndexingResult
+      AmarcordApi.Types.JsonStartMergeJobForDataSetInput
+      AmarcordApi.Types.JsonStartMergeJobForDataSetOutput
+      AmarcordApi.Types.JsonStartRunOutput
+      AmarcordApi.Types.JsonStopRunOutput
+      AmarcordApi.Types.JsonUpdateAttributoConversionFlags
+      AmarcordApi.Types.JsonUpdateAttributoInput
+      AmarcordApi.Types.JsonUpdateAttributoOutput
+      AmarcordApi.Types.JsonUpdateBeamtimeInput
+      AmarcordApi.Types.JsonUpdateBeamtimeScheduleInput
+      AmarcordApi.Types.JsonUpdateLiveStream
+      AmarcordApi.Types.JsonUpdateRun
+      AmarcordApi.Types.JsonUpdateRunOutput
+      AmarcordApi.Types.JsonUpdateRunsBulkInput
+      AmarcordApi.Types.JsonUpdateRunsBulkOutput
+      AmarcordApi.Types.JsonUserConfig
+      AmarcordApi.Types.JsonUserConfigurationSingleOutput
+      AmarcordApi.Types.MergeModel
+      AmarcordApi.Types.MergeNegativeHandling
+      AmarcordApi.Types.MergeResult
+      AmarcordApi.Types.MergeResultFom
+      AmarcordApi.Types.MergeResultOuterShell
+      AmarcordApi.Types.MergeResultShell
+      AmarcordApi.Types.RefinementResult
+      AmarcordApi.Types.ScaleIntensities
+      AmarcordApi.Types.ValidationError
+      AmarcordApi.Configuration
+      AmarcordApi.SecuritySchemes
+      AmarcordApi.Common
+    -- copied
+    build-depends:     base
+                     , derive-storable
+                     , optparse-applicative
+                     , monad-logger
+                     -- from here on: copied
+                     , text
+                     , ghc-prim
+                     , http-conduit
+                     , http-client
+                     , http-types
+                     , bytestring
+                     , aeson
+                     , unordered-containers
+                     , vector
+                     , scientific
+                     , time
+                     , mtl
+                     , transformers
+    hs-source-dirs:    app lib
+    -- copied from generated cabal file
+    ghc-options:       -funbox-strict-fields
+    hsc2hs-options:    --cc g++ --lflag=-lstdc++ -k -DCABAL_BINDGEN=1
     pkgconfig-depends: ctango
-    default-language: Haskell2010
+    default-language:  Haskell2010
+
+executable tango-hs-testprogram
+    import:            warnings
+    main-is:           Main.hs
+    other-modules:     Tango, TangoHL
+    build-depends:     base
+                     , text
+                     , derive-storable
+    hs-source-dirs:    app
+    -- include-dirs: c_tango/src
+    hsc2hs-options:    --cc g++ --lflag=-lstdc++ -k -DCABAL_BINDGEN=1
+    pkgconfig-depends: ctango
+    default-language:  Haskell2010

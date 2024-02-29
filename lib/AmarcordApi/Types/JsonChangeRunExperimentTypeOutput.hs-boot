@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonChangeRunExperimentTypeOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonChangeRunExperimentTypeOutput
+instance Show JsonChangeRunExperimentTypeOutput
+instance Eq JsonChangeRunExperimentTypeOutput
+instance FromJSON JsonChangeRunExperimentTypeOutput
+instance ToJSON JsonChangeRunExperimentTypeOutput

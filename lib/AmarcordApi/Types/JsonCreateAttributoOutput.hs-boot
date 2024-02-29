@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonCreateAttributoOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonCreateAttributoOutput
+instance Show JsonCreateAttributoOutput
+instance Eq JsonCreateAttributoOutput
+instance FromJSON JsonCreateAttributoOutput
+instance ToJSON JsonCreateAttributoOutput

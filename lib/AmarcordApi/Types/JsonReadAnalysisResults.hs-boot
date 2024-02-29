@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonReadAnalysisResults where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonReadAnalysisResults
+instance Show JsonReadAnalysisResults
+instance Eq JsonReadAnalysisResults
+instance FromJSON JsonReadAnalysisResults
+instance ToJSON JsonReadAnalysisResults

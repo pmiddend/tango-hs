@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonBeamtimeScheduleRow where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonBeamtimeScheduleRow
+instance Show JsonBeamtimeScheduleRow
+instance Eq JsonBeamtimeScheduleRow
+instance FromJSON JsonBeamtimeScheduleRow
+instance ToJSON JsonBeamtimeScheduleRow

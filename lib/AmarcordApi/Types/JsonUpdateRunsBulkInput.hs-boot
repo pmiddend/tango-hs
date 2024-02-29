@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonUpdateRunsBulkInput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonUpdateRunsBulkInput
+instance Show JsonUpdateRunsBulkInput
+instance Eq JsonUpdateRunsBulkInput
+instance FromJSON JsonUpdateRunsBulkInput
+instance ToJSON JsonUpdateRunsBulkInput

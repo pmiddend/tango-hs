@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonEventTopLevelOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonEventTopLevelOutput
+instance Show JsonEventTopLevelOutput
+instance Eq JsonEventTopLevelOutput
+instance FromJSON JsonEventTopLevelOutput
+instance ToJSON JsonEventTopLevelOutput

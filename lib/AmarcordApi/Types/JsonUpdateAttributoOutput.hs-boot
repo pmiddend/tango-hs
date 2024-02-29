@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonUpdateAttributoOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonUpdateAttributoOutput
+instance Show JsonUpdateAttributoOutput
+instance Eq JsonUpdateAttributoOutput
+instance FromJSON JsonUpdateAttributoOutput
+instance ToJSON JsonUpdateAttributoOutput

@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonUpdateAttributoConversionFlags where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonUpdateAttributoConversionFlags
+instance Show JsonUpdateAttributoConversionFlags
+instance Eq JsonUpdateAttributoConversionFlags
+instance FromJSON JsonUpdateAttributoConversionFlags
+instance ToJSON JsonUpdateAttributoConversionFlags

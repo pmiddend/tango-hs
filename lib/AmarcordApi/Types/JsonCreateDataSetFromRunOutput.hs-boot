@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonCreateDataSetFromRunOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonCreateDataSetFromRunOutput
+instance Show JsonCreateDataSetFromRunOutput
+instance Eq JsonCreateDataSetFromRunOutput
+instance FromJSON JsonCreateDataSetFromRunOutput
+instance ToJSON JsonCreateDataSetFromRunOutput

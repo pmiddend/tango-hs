@@ -425,6 +425,8 @@ ErrorStack *tango_delete_device_property(void *dev_proxy, DbData *prop_list);
 void tango_free_DbDatum(DbDatum *db_datum);
 void tango_free_DbData(DbData *db_data);
 
+void start_server();
+
 #ifdef __cplusplus
 }      /* extern "C" */
 #endif

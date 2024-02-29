@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonIndexingResultRootJson where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonIndexingResultRootJson
+instance Show JsonIndexingResultRootJson
+instance Eq JsonIndexingResultRootJson
+instance FromJSON JsonIndexingResultRootJson
+instance ToJSON JsonIndexingResultRootJson

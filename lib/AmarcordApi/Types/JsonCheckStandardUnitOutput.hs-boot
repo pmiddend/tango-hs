@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonCheckStandardUnitOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonCheckStandardUnitOutput
+instance Show JsonCheckStandardUnitOutput
+instance Eq JsonCheckStandardUnitOutput
+instance FromJSON JsonCheckStandardUnitOutput
+instance ToJSON JsonCheckStandardUnitOutput

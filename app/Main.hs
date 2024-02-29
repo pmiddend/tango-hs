@@ -65,7 +65,7 @@ import Tango
     tango_unlock,
     tango_write_attribute,
   )
-import TangoHL (getTimeoutMillis, setTimeoutMillis, withDeviceProxy)
+import TangoHL (withDeviceProxy)
 
 checkResult :: IO (Ptr HaskellErrorStack) -> IO ()
 checkResult action = do
@@ -84,9 +84,24 @@ checkResult action = do
     fail ("error in result: " <> unlines errorLines)
 
 main = withDeviceProxy "sys/tg_test/1" $ \proxyPtr -> do
-  setTimeoutMillis proxyPtr 1337
-  millis <- getTimeoutMillis proxyPtr
-  putStrLn ("millis: " <> show millis)
+  let stringCommandName = "DevString"
+      stringCommandInput = "foobar"
+  withCString stringCommandInput $ \cmdInput -> with (HaskellCommandData HaskellDevString (HaskellCommandCString cmdInput)) $ \arginPtr ->
+    alloca $ \argoutPtr -> withCString "DevString" $ \cmdName -> do
+      checkResult (tango_command_inout proxyPtr cmdName arginPtr argoutPtr)
+      argOut <- peek argoutPtr
+      putStrLn ("<= executed command " <> stringCommandName <> ", result " <> show argOut)
+      putStrLn "=> decoding output"
+      case tangoCommandData argOut of
+        HaskellCommandCString s -> do
+          decoded <- peekCString s
+          putStrLn ("<= output decoded: " <> decoded)
+        _ -> error "<= couldn't decode output, type unexpected"
+
+-- main = withDeviceProxy "sys/tg_test/1" $ \proxyPtr -> do
+--   setTimeoutMillis proxyPtr 1337
+--   millis <- getTimeoutMillis proxyPtr
+--   putStrLn ("millis: " <> show millis)
 
 main2 :: IO ()
 main2 = do

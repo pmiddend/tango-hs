@@ -8,8 +8,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
-    #    tango-controls.url = "git+https://gitlab.desy.de/cfel-sc-public/tango-flake?ref=v9.4.2";
-    tango-controls.url = "/home/pmidden/code/tango-flake";
+    tango-controls.url = "git+https://gitlab.desy.de/cfel-sc-public/tango-flake";
+    # tango-controls.url = "/home/pmidden/code/tango-flake";
   };
 
   outputs = { self, nixpkgs, flake-utils, tango-controls }:

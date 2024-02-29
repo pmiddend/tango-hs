@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonStartMergeJobForDataSetInput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonStartMergeJobForDataSetInput
+instance Show JsonStartMergeJobForDataSetInput
+instance Eq JsonStartMergeJobForDataSetInput
+instance FromJSON JsonStartMergeJobForDataSetInput
+instance ToJSON JsonStartMergeJobForDataSetInput

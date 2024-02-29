@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module TangoHL (withDeviceProxy, checkResult, getTimeoutMillis, setTimeoutMillis) where
+module TangoHL (withDeviceProxy, checkResult) where
 
 import Control.Applicative (pure)
 import Control.Exception (Exception, bracket, throw)
@@ -68,72 +68,72 @@ withDeviceProxy proxyAddress =
         checkResult (tango_delete_device_proxy proxyPtrPtr)
    in bracket initialize deinitialize
 
-getTimeoutMillis :: DeviceProxyPtr -> IO Int
-getTimeoutMillis proxyPtr = alloca $ \millisPtr -> do
-  checkResult (tango_get_timeout_millis proxyPtr millisPtr)
-  fromIntegral <$> peek millisPtr
+-- getTimeoutMillis :: DeviceProxyPtr -> IO Int
+-- getTimeoutMillis proxyPtr = alloca $ \millisPtr -> do
+--   checkResult (tango_get_timeout_millis proxyPtr millisPtr)
+--   fromIntegral <$> peek millisPtr
 
-setTimeoutMillis :: DeviceProxyPtr -> Int -> IO ()
-setTimeoutMillis proxyPtr millis = checkResult (tango_set_timeout_millis proxyPtr (fromIntegral millis))
+-- setTimeoutMillis :: DeviceProxyPtr -> Int -> IO ()
+-- setTimeoutMillis proxyPtr millis = checkResult (tango_set_timeout_millis proxyPtr (fromIntegral millis))
 
-data DevEncoded = DevEncoded
-  { encodedFormat :: Text,
-    encodedData :: [Word8]
-  }
-  deriving (Show)
+-- data DevEncoded = DevEncoded
+--   { encodedFormat :: Text,
+--     encodedData :: [Word8]
+--   }
+--   deriving (Show)
 
-data CommandInputOutput
-  = CommandInputVoid
-  | CommandInputBool Bool
-  | CommandInputInt16 Int16
-  | CommandInputInt32 Int32
-  | CommandInputInt64 Int64
-  | CommandInputFloat Float
-  | CommandInputDouble Double
-  | CommandInputWord8 Word8
-  | CommandInputWord16 Word16
-  | CommandInputWord32 Word32
-  | CommandInputWord64 Word64
-  | CommandInputText Text
-  | CommandInputBoolList [Bool]
-  | CommandInputCharList [Char]
-  | CommandInputInt16List [Int16]
-  | CommandInputInt32List [Int32]
-  | CommandInputFloatList [Float]
-  | CommandInputDoubleList [Double]
-  | CommandInputWord16List [Word16]
-  | CommandInputWord32List [Word32]
-  | CommandInputTextList [Text]
-  | CommandInputInt32TextList [Int32] [Text]
-  | CommandInputDoubleTextList [Double] [Text]
-  | CommandInputState HaskellTangoDevState
-  | CommandInputConstDevText Text
-  | CommandInputDevEncoded DevEncoded
-  deriving (Show)
+-- data CommandInputOutput
+--   = CommandInputVoid
+--   | CommandInputBool Bool
+--   | CommandInputInt16 Int16
+--   | CommandInputInt32 Int32
+--   | CommandInputInt64 Int64
+--   | CommandInputFloat Float
+--   | CommandInputDouble Double
+--   | CommandInputWord8 Word8
+--   | CommandInputWord16 Word16
+--   | CommandInputWord32 Word32
+--   | CommandInputWord64 Word64
+--   | CommandInputText Text
+--   | CommandInputBoolList [Bool]
+--   | CommandInputCharList [Char]
+--   | CommandInputInt16List [Int16]
+--   | CommandInputInt32List [Int32]
+--   | CommandInputFloatList [Float]
+--   | CommandInputDoubleList [Double]
+--   | CommandInputWord16List [Word16]
+--   | CommandInputWord32List [Word32]
+--   | CommandInputTextList [Text]
+--   | CommandInputInt32TextList [Int32] [Text]
+--   | CommandInputDoubleTextList [Double] [Text]
+--   | CommandInputState HaskellTangoDevState
+--   | CommandInputConstDevText Text
+--   | CommandInputDevEncoded DevEncoded
+--   deriving (Show)
 
-haskellCommandDataToCommandInputOutput :: HaskellTangoCommandData -> IO CommandInputOutput
-haskellCommandDataToCommandInputOutput x = case x of
-  HaskellCommandVoid -> pure CommandInputVoid
-  HaskellCommandBool b -> pure (CommandInputBool (b /= 0))
-  HaskellCommandVarCString (HaskellTangoVarArray len values) -> do
-    peekedCStrings :: [CString] <- peekArray (fromIntegral len) values
-    peekedTexts :: [Text] <- traverse ((pack <$>) . peekCString) peekedCStrings
-    pure (CommandInputTextList peekedTexts)
+-- haskellCommandDataToCommandInputOutput :: HaskellTangoCommandData -> IO CommandInputOutput
+-- haskellCommandDataToCommandInputOutput x = case x of
+--   HaskellCommandVoid -> pure CommandInputVoid
+--   HaskellCommandBool b -> pure (CommandInputBool (b /= 0))
+--   HaskellCommandVarCString (HaskellTangoVarArray len values) -> do
+--     peekedCStrings :: [CString] <- peekArray (fromIntegral len) values
+--     peekedTexts :: [Text] <- traverse ((pack <$>) . peekCString) peekedCStrings
+--     pure (CommandInputTextList peekedTexts)
 
-commandInout :: DeviceProxyPtr -> Text -> CommandInputOutput -> (CommandInputOutput -> IO a) -> IO a
-commandInout proxyPtr commandName input outputProcessor =
-  withCString (unpack commandName) $ \commandNamePtr ->
-    case input of
-      CommandInputVoid -> with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) $ \inputPtr -> alloca $ \outputPtr ->
-        let initialize = do
-              checkResult (tango_command_inout proxyPtr commandNamePtr inputPtr outputPtr)
-              peek outputPtr
-            deinitialize _ = tango_free_CommandData outputPtr
-         in bracket initialize deinitialize (\x -> haskellCommandDataToCommandInputOutput (tangoCommandData x) >>= outputProcessor)
-      CommandInputBool b -> with (HaskellCommandData HaskellDevBoolean (HaskellCommandBool (if b then 1 else 0))) $ \inputPtr -> alloca $ \outputPtr ->
-        let initialize = do
-              checkResult (tango_command_inout proxyPtr commandNamePtr inputPtr outputPtr)
-              peek outputPtr
-            deinitialize _ = tango_free_CommandData outputPtr
-         in bracket initialize deinitialize (\x -> haskellCommandDataToCommandInputOutput (tangoCommandData x) >>= outputProcessor)
-      CommandInputTextList b -> -- FIXME
+-- commandInout :: DeviceProxyPtr -> Text -> CommandInputOutput -> (CommandInputOutput -> IO a) -> IO a
+-- commandInout proxyPtr commandName input outputProcessor =
+--   withCString (unpack commandName) $ \commandNamePtr ->
+--     case input of
+--       CommandInputVoid -> with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) $ \inputPtr -> alloca $ \outputPtr ->
+--         let initialize = do
+--               checkResult (tango_command_inout proxyPtr commandNamePtr inputPtr outputPtr)
+--               peek outputPtr
+--             deinitialize _ = tango_free_CommandData outputPtr
+--          in bracket initialize deinitialize (\x -> haskellCommandDataToCommandInputOutput (tangoCommandData x) >>= outputProcessor)
+--       CommandInputBool b -> with (HaskellCommandData HaskellDevBoolean (HaskellCommandBool (if b then 1 else 0))) $ \inputPtr -> alloca $ \outputPtr ->
+--         let initialize = do
+--               checkResult (tango_command_inout proxyPtr commandNamePtr inputPtr outputPtr)
+--               peek outputPtr
+--             deinitialize _ = tango_free_CommandData outputPtr
+--          in bracket initialize deinitialize (\x -> haskellCommandDataToCommandInputOutput (tangoCommandData x) >>= outputProcessor)
+--       CommandInputTextList b -> -- FIXME

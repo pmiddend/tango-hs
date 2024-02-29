@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonUpdateBeamtimeInput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonUpdateBeamtimeInput
+instance Show JsonUpdateBeamtimeInput
+instance Eq JsonUpdateBeamtimeInput
+instance FromJSON JsonUpdateBeamtimeInput
+instance ToJSON JsonUpdateBeamtimeInput

@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonCreateRefinementResultInput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonCreateRefinementResultInput
+instance Show JsonCreateRefinementResultInput
+instance Eq JsonCreateRefinementResultInput
+instance FromJSON JsonCreateRefinementResultInput
+instance ToJSON JsonCreateRefinementResultInput

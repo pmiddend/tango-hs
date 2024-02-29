@@ -1,0 +1,9 @@
+module AmarcordApi.Types.JsonCreateChemicalOutput where
+import Data.Aeson
+import qualified Data.Aeson as Data.Aeson.Types.Internal
+import qualified AmarcordApi.Common
+data JsonCreateChemicalOutput
+instance Show JsonCreateChemicalOutput
+instance Eq JsonCreateChemicalOutput
+instance FromJSON JsonCreateChemicalOutput
+instance ToJSON JsonCreateChemicalOutput
