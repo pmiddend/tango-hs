@@ -202,7 +202,8 @@ executable chef
     build-depends:     base
                      , derive-storable
                      , optparse-applicative
-                     , monad-logger
+                     , log-base
+                     , unliftio
                      -- from here on: copied
                      , text
                      , ghc-prim

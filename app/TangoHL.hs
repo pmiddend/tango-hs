@@ -1,10 +1,12 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module TangoHL (withDeviceProxy, checkResult) where
+module TangoHL (withDeviceProxy, checkResult, readStringAttribute, writeIntAttribute, commandInOutVoid) where
 
 import Control.Applicative (pure)
 import Control.Exception (Exception, bracket, throw)
-import Control.Monad (fail, when, (>>=))
+import Control.Monad (fail, void, when, (>>=))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (Bool)
 import Data.Char (Char)
 import Data.Eq ((/=))
@@ -25,48 +27,102 @@ import Foreign.Storable (peek)
 import System.IO (IO)
 import Tango
   ( DeviceProxyPtr,
+    HaskellAttributeData (..),
+    HaskellAttributeDataList (attributeDataListSequence),
     HaskellCommandData (..),
+    HaskellDataFormat (..),
+    HaskellDataQuality (..),
     HaskellDevFailed (HaskellDevFailed),
     HaskellErrorStack (errorStackLength, errorStackSequence),
+    HaskellTangoAttributeData (HaskellAttributeDataLongArray, HaskellAttributeDataStringArray),
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
     HaskellTangoDevState,
     HaskellTangoVarArray (..),
+    Timeval (..),
     tango_command_inout,
     tango_create_device_proxy,
     tango_delete_device_proxy,
+    tango_free_AttributeData,
     tango_free_CommandData,
     tango_get_timeout_millis,
+    tango_read_attribute,
     tango_set_timeout_millis,
+    tango_write_attribute,
   )
 import Text.Show (Show, show)
-import Prelude (Double, Float, fromIntegral)
+import qualified UnliftIO as UnliftIO
+import qualified UnliftIO.Foreign as UnliftForeign
+import Prelude (Double, Float, error, fromIntegral)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
 instance Exception TangoException
 
-checkResult :: IO (Ptr HaskellErrorStack) -> IO ()
+checkResult :: UnliftIO.MonadUnliftIO m => m (Ptr HaskellErrorStack) -> m ()
 checkResult action = do
   es <- action
   when (es /= nullPtr) $ do
-    errorStack <- peek es
-    stackItems <- peekArray (fromIntegral (errorStackLength errorStack)) (errorStackSequence errorStack)
-    formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse ((pack <$>) . peekCString)) stackItems
+    errorStack <- liftIO $ peek es
+    stackItems <- UnliftForeign.peekArray (fromIntegral (errorStackLength errorStack)) (errorStackSequence errorStack)
+    formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse ((pack <$>) . UnliftForeign.peekCString)) stackItems
     throw (TangoException formattedStackItems)
 
-withDeviceProxy :: Text -> (DeviceProxyPtr -> IO a) -> IO a
+withDeviceProxy :: forall m a. UnliftIO.MonadUnliftIO m => Text -> (DeviceProxyPtr -> m a) -> m a
 withDeviceProxy proxyAddress =
-  let initialize :: IO DeviceProxyPtr
+  let initialize :: m DeviceProxyPtr
       initialize =
-        alloca $ \proxyPtrPtr -> do
+        liftIO $ alloca $ \proxyPtrPtr -> do
           withCString (unpack proxyAddress) $ \proxyName -> do
             checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
             peek proxyPtrPtr
-      deinitialize :: DeviceProxyPtr -> IO ()
+      deinitialize :: DeviceProxyPtr -> m ()
       deinitialize proxyPtrPtr =
-        checkResult (tango_delete_device_proxy proxyPtrPtr)
-   in bracket initialize deinitialize
+        liftIO $ checkResult (tango_delete_device_proxy proxyPtrPtr)
+   in UnliftIO.bracket initialize deinitialize
+
+writeIntAttribute :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> Int -> m ()
+writeIntAttribute proxyPtr attributeName newValue = do
+  UnliftForeign.withCString (unpack attributeName) $ \attributeNameC ->
+    UnliftForeign.with (fromIntegral newValue) $ \newValuePtr -> UnliftForeign.with
+      ( HaskellAttributeData
+          { dataFormat = HaskellScalar,
+            dataQuality = HaskellValid,
+            nbRead = 0,
+            name = attributeNameC,
+            dimX = 1,
+            dimY = 1,
+            timeStamp = Timeval 0 0,
+            dataType = HaskellDevLong64,
+            tangoAttributeData = HaskellAttributeDataLongArray (HaskellTangoVarArray 1 newValuePtr)
+          }
+      )
+      $ \newDataPtr ->
+        liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+
+readStringAttribute :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> m Text
+readStringAttribute proxyPtr attributeNameHaskell =
+  liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
+    alloca $ \haskellAttributeDataPtr -> do
+      checkResult (tango_read_attribute proxyPtr attributeName haskellAttributeDataPtr)
+      haskellAttributeData <- peek haskellAttributeDataPtr
+      case tangoAttributeData haskellAttributeData of
+        HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues}) -> do
+          firstString <- peek varArrayValues
+          result <- pack <$> peekCString firstString
+          tango_free_AttributeData haskellAttributeDataPtr
+          pure result
+        _ -> do
+          tango_free_AttributeData haskellAttributeDataPtr
+          error "invalid type of attribute, not a string"
+
+commandInOutVoid :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> m ()
+commandInOutVoid proxyPtr commandName =
+  liftIO $
+    withCString (unpack commandName) $
+      \commandNamePtr ->
+        with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) $ \commandDataInPtr -> with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) $ \commandDataOutPtr ->
+          checkResult $ tango_command_inout proxyPtr commandNamePtr commandDataInPtr commandDataOutPtr
 
 -- getTimeoutMillis :: DeviceProxyPtr -> IO Int
 -- getTimeoutMillis proxyPtr = alloca $ \millisPtr -> do
