@@ -32,16 +32,14 @@ import qualified GHC.Show
 import qualified GHC.Types
 import qualified AmarcordApi.Common
 import AmarcordApi.TypeAlias
-import {-# SOURCE #-} AmarcordApi.Types.JSONSchemaBoolean
-import {-# SOURCE #-} AmarcordApi.Types.JSONSchemaNumber
-import {-# SOURCE #-} AmarcordApi.Types.JSONSchemaString
+import {-# SOURCE #-} AmarcordApi.Types.JSONSchemaArrayType
 
 -- | Defines the object schema located at @components.schemas.JSONSchemaArray@ in the specification.
 -- 
 -- 
 data JSONSchemaArray = JSONSchemaArray {
-  -- | items
-  jSONSchemaArrayItems :: JSONSchemaArrayItems'Variants
+  -- | item_type: An enumeration.
+  jSONSchemaArrayItemType :: JSONSchemaArrayType
   -- | maxItems
   , jSONSchemaArrayMaxItems :: (GHC.Maybe.Maybe GHC.Types.Int)
   -- | minItems
@@ -49,29 +47,13 @@ data JSONSchemaArray = JSONSchemaArray {
   } deriving (GHC.Show.Show
   , GHC.Classes.Eq)
 instance Data.Aeson.Types.ToJSON.ToJSON JSONSchemaArray
-    where {toJSON obj = Data.Aeson.Types.Internal.object (Data.Foldable.concat (["items" Data.Aeson.Types.ToJSON..= jSONSchemaArrayItems obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("maxItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMaxItems obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("minItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMinItems obj) : ["type" Data.Aeson.Types.ToJSON..= Data.Aeson.Types.Internal.String "array"] : GHC.Base.mempty));
-           toEncoding obj = Data.Aeson.Encoding.Internal.pairs (GHC.Base.mconcat (Data.Foldable.concat (["items" Data.Aeson.Types.ToJSON..= jSONSchemaArrayItems obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("maxItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMaxItems obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("minItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMinItems obj) : ["type" Data.Aeson.Types.ToJSON..= Data.Aeson.Types.Internal.String "array"] : GHC.Base.mempty)))}
+    where {toJSON obj = Data.Aeson.Types.Internal.object (Data.Foldable.concat (["item_type" Data.Aeson.Types.ToJSON..= jSONSchemaArrayItemType obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("maxItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMaxItems obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("minItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMinItems obj) : ["type" Data.Aeson.Types.ToJSON..= Data.Aeson.Types.Internal.String "array"] : GHC.Base.mempty));
+           toEncoding obj = Data.Aeson.Encoding.Internal.pairs (GHC.Base.mconcat (Data.Foldable.concat (["item_type" Data.Aeson.Types.ToJSON..= jSONSchemaArrayItemType obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("maxItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMaxItems obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("minItems" Data.Aeson.Types.ToJSON..=)) (jSONSchemaArrayMinItems obj) : ["type" Data.Aeson.Types.ToJSON..= Data.Aeson.Types.Internal.String "array"] : GHC.Base.mempty)))}
 instance Data.Aeson.Types.FromJSON.FromJSON JSONSchemaArray
-    where {parseJSON = Data.Aeson.Types.FromJSON.withObject "JSONSchemaArray" (\obj -> ((GHC.Base.pure JSONSchemaArray GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "items")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "maxItems")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "minItems"))}
+    where {parseJSON = Data.Aeson.Types.FromJSON.withObject "JSONSchemaArray" (\obj -> ((GHC.Base.pure JSONSchemaArray GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "item_type")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "maxItems")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "minItems"))}
 -- | Create a new 'JSONSchemaArray' with all required fields.
-mkJSONSchemaArray :: JSONSchemaArrayItems'Variants -- ^ 'jSONSchemaArrayItems'
+mkJSONSchemaArray :: JSONSchemaArrayType -- ^ 'jSONSchemaArrayItemType'
   -> JSONSchemaArray
-mkJSONSchemaArray jSONSchemaArrayItems = JSONSchemaArray{jSONSchemaArrayItems = jSONSchemaArrayItems,
-                                                         jSONSchemaArrayMaxItems = GHC.Maybe.Nothing,
-                                                         jSONSchemaArrayMinItems = GHC.Maybe.Nothing}
--- | Defines the oneOf schema located at @components.schemas.JSONSchemaArray.properties.items.oneOf@ in the specification.
--- 
--- 
-data JSONSchemaArrayItems'Variants =
-   JSONSchemaArrayItems'JSONSchemaString JSONSchemaString
-  | JSONSchemaArrayItems'JSONSchemaBoolean JSONSchemaBoolean
-  | JSONSchemaArrayItems'JSONSchemaNumber JSONSchemaNumber
-  deriving (GHC.Show.Show, GHC.Classes.Eq)
-instance Data.Aeson.Types.ToJSON.ToJSON JSONSchemaArrayItems'Variants
-    where {toJSON (JSONSchemaArrayItems'JSONSchemaString a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JSONSchemaArrayItems'JSONSchemaBoolean a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JSONSchemaArrayItems'JSONSchemaNumber a) = Data.Aeson.Types.ToJSON.toJSON a}
-instance Data.Aeson.Types.FromJSON.FromJSON JSONSchemaArrayItems'Variants
-    where {parseJSON val = case (JSONSchemaArrayItems'JSONSchemaString Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JSONSchemaArrayItems'JSONSchemaBoolean Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JSONSchemaArrayItems'JSONSchemaNumber Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> Data.Aeson.Types.Internal.Error "No variant matched")) of
-                           {Data.Aeson.Types.Internal.Success a -> GHC.Base.pure a;
-                            Data.Aeson.Types.Internal.Error a -> Control.Monad.Fail.fail a}}
+mkJSONSchemaArray jSONSchemaArrayItemType = JSONSchemaArray{jSONSchemaArrayItemType = jSONSchemaArrayItemType,
+                                                            jSONSchemaArrayMaxItems = GHC.Maybe.Nothing,
+                                                            jSONSchemaArrayMinItems = GHC.Maybe.Nothing}

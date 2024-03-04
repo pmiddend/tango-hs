@@ -55,6 +55,7 @@ module AmarcordApi (
   module AmarcordApi.Types.ChemicalType,
   module AmarcordApi.Types.HTTPValidationError,
   module AmarcordApi.Types.JSONSchemaArray,
+  module AmarcordApi.Types.JSONSchemaArrayType,
   module AmarcordApi.Types.JSONSchemaBoolean,
   module AmarcordApi.Types.JSONSchemaInteger,
   module AmarcordApi.Types.JSONSchemaNumber,
@@ -228,6 +229,7 @@ import AmarcordApi.Types.AssociatedTable
 import AmarcordApi.Types.ChemicalType
 import AmarcordApi.Types.HTTPValidationError
 import AmarcordApi.Types.JSONSchemaArray
+import AmarcordApi.Types.JSONSchemaArrayType
 import AmarcordApi.Types.JSONSchemaBoolean
 import AmarcordApi.Types.JSONSchemaInteger
 import AmarcordApi.Types.JSONSchemaNumber

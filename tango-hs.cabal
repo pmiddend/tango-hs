@@ -17,7 +17,7 @@ extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
 
 common warnings
-    ghc-options: -Wall
+    ghc-options: -Wall -Wno-unused-imports
 
 executable chef
     import:            warnings
@@ -80,6 +80,7 @@ executable chef
       AmarcordApi.Types.ChemicalType
       AmarcordApi.Types.HTTPValidationError
       AmarcordApi.Types.JSONSchemaArray
+      AmarcordApi.Types.JSONSchemaArrayType
       AmarcordApi.Types.JSONSchemaBoolean
       AmarcordApi.Types.JSONSchemaInteger
       AmarcordApi.Types.JSONSchemaNumber
@@ -203,7 +204,11 @@ executable chef
                      , derive-storable
                      , optparse-applicative
                      , log-base
+                     , scotty
+                     , lucid
+                     , lucid-htmx
                      , unliftio
+                     , containers
                      -- from here on: copied
                      , text
                      , ghc-prim

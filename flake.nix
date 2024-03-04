@@ -16,22 +16,22 @@
     flake-utils.lib.eachDefaultSystem
       (system:
         let
-          # pkgs = nixpkgs.legacyPackages.${system};
           pkgs = import nixpkgs {
             inherit system;
             overlays = [ tango-controls.overlay ];
           };
 
-          haskellPackages = pkgs.haskellPackages;
-
-          jailbreakUnbreak = pkg:
-            pkgs.haskell.lib.doJailbreak (pkg.overrideAttrs (_: { meta = { }; }));
+          haskellPackages = pkgs.haskellPackages.override {
+            overrides = self: super: {
+              log-base = pkgs.haskell.lib.markUnbroken super.log-base;
+            };
+          };
 
           packageName = "tango-hs";
         in
         {
           packages.${packageName} =
-            haskellPackages.callCabal2nix packageName self rec {
+            haskellPackages.callCabal2nix packageName self {
               # tango = pkgs.tango-controls-9_4;
               ctango = self.packages.${system}.ctango;
             };

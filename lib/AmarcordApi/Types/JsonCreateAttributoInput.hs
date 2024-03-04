@@ -45,8 +45,16 @@ import {-# SOURCE #-} AmarcordApi.Types.JSONSchemaString
 data JsonCreateAttributoInput = JsonCreateAttributoInput {
   -- | associated_table: An enumeration.
   jsonCreateAttributoInputAssociatedTable :: AssociatedTable
-  -- | attributo_type
-  , jsonCreateAttributoInputAttributoType :: JsonCreateAttributoInputAttributoType'Variants
+  -- | attributo_type_array
+  , jsonCreateAttributoInputAttributoTypeArray :: (GHC.Maybe.Maybe JSONSchemaArray)
+  -- | attributo_type_boolean
+  , jsonCreateAttributoInputAttributoTypeBoolean :: (GHC.Maybe.Maybe JSONSchemaBoolean)
+  -- | attributo_type_integer
+  , jsonCreateAttributoInputAttributoTypeInteger :: (GHC.Maybe.Maybe JSONSchemaInteger)
+  -- | attributo_type_number
+  , jsonCreateAttributoInputAttributoTypeNumber :: (GHC.Maybe.Maybe JSONSchemaNumber)
+  -- | attributo_type_string
+  , jsonCreateAttributoInputAttributoTypeString :: (GHC.Maybe.Maybe JSONSchemaString)
   -- | beamtime_id
   , jsonCreateAttributoInputBeamtimeId :: GHC.Types.Int
   -- | description
@@ -58,41 +66,24 @@ data JsonCreateAttributoInput = JsonCreateAttributoInput {
   } deriving (GHC.Show.Show
   , GHC.Classes.Eq)
 instance Data.Aeson.Types.ToJSON.ToJSON JsonCreateAttributoInput
-    where {toJSON obj = Data.Aeson.Types.Internal.object (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputAssociatedTable obj] : ["attributo_type" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputAttributoType obj] : ["beamtime_id" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputBeamtimeId obj] : ["description" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputGroup obj] : ["name" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputName obj] : GHC.Base.mempty));
-           toEncoding obj = Data.Aeson.Encoding.Internal.pairs (GHC.Base.mconcat (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputAssociatedTable obj] : ["attributo_type" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputAttributoType obj] : ["beamtime_id" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputBeamtimeId obj] : ["description" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputGroup obj] : ["name" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputName obj] : GHC.Base.mempty)))}
+    where {toJSON obj = Data.Aeson.Types.Internal.object (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputAssociatedTable obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_array" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeArray obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_boolean" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeBoolean obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_integer" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeInteger obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_number" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeNumber obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_string" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeString obj) : ["beamtime_id" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputBeamtimeId obj] : ["description" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputGroup obj] : ["name" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputName obj] : GHC.Base.mempty));
+           toEncoding obj = Data.Aeson.Encoding.Internal.pairs (GHC.Base.mconcat (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputAssociatedTable obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_array" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeArray obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_boolean" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeBoolean obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_integer" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeInteger obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_number" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeNumber obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_string" Data.Aeson.Types.ToJSON..=)) (jsonCreateAttributoInputAttributoTypeString obj) : ["beamtime_id" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputBeamtimeId obj] : ["description" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputGroup obj] : ["name" Data.Aeson.Types.ToJSON..= jsonCreateAttributoInputName obj] : GHC.Base.mempty)))}
 instance Data.Aeson.Types.FromJSON.FromJSON JsonCreateAttributoInput
-    where {parseJSON = Data.Aeson.Types.FromJSON.withObject "JsonCreateAttributoInput" (\obj -> (((((GHC.Base.pure JsonCreateAttributoInput GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "associated_table")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "attributo_type")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "beamtime_id")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "description")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "group")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "name"))}
+    where {parseJSON = Data.Aeson.Types.FromJSON.withObject "JsonCreateAttributoInput" (\obj -> (((((((((GHC.Base.pure JsonCreateAttributoInput GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "associated_table")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_array")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_boolean")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_integer")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_number")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_string")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "beamtime_id")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "description")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "group")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "name"))}
 -- | Create a new 'JsonCreateAttributoInput' with all required fields.
 mkJsonCreateAttributoInput :: AssociatedTable -- ^ 'jsonCreateAttributoInputAssociatedTable'
-  -> JsonCreateAttributoInputAttributoType'Variants -- ^ 'jsonCreateAttributoInputAttributoType'
   -> GHC.Types.Int -- ^ 'jsonCreateAttributoInputBeamtimeId'
   -> Data.Text.Internal.Text -- ^ 'jsonCreateAttributoInputDescription'
   -> Data.Text.Internal.Text -- ^ 'jsonCreateAttributoInputGroup'
   -> Data.Text.Internal.Text -- ^ 'jsonCreateAttributoInputName'
   -> JsonCreateAttributoInput
-mkJsonCreateAttributoInput jsonCreateAttributoInputAssociatedTable jsonCreateAttributoInputAttributoType jsonCreateAttributoInputBeamtimeId jsonCreateAttributoInputDescription jsonCreateAttributoInputGroup jsonCreateAttributoInputName = JsonCreateAttributoInput{jsonCreateAttributoInputAssociatedTable = jsonCreateAttributoInputAssociatedTable,
-                                                                                                                                                                                                                                                                      jsonCreateAttributoInputAttributoType = jsonCreateAttributoInputAttributoType,
-                                                                                                                                                                                                                                                                      jsonCreateAttributoInputBeamtimeId = jsonCreateAttributoInputBeamtimeId,
-                                                                                                                                                                                                                                                                      jsonCreateAttributoInputDescription = jsonCreateAttributoInputDescription,
-                                                                                                                                                                                                                                                                      jsonCreateAttributoInputGroup = jsonCreateAttributoInputGroup,
-                                                                                                                                                                                                                                                                      jsonCreateAttributoInputName = jsonCreateAttributoInputName}
--- | Defines the oneOf schema located at @components.schemas.JsonCreateAttributoInput.properties.attributo_type.oneOf@ in the specification.
--- 
--- 
-data JsonCreateAttributoInputAttributoType'Variants =
-   JsonCreateAttributoInputAttributoType'JSONSchemaInteger JSONSchemaInteger
-  | JsonCreateAttributoInputAttributoType'JSONSchemaNumber JSONSchemaNumber
-  | JsonCreateAttributoInputAttributoType'JSONSchemaString JSONSchemaString
-  | JsonCreateAttributoInputAttributoType'JSONSchemaArray JSONSchemaArray
-  | JsonCreateAttributoInputAttributoType'JSONSchemaBoolean JSONSchemaBoolean
-  deriving (GHC.Show.Show, GHC.Classes.Eq)
-instance Data.Aeson.Types.ToJSON.ToJSON JsonCreateAttributoInputAttributoType'Variants
-    where {toJSON (JsonCreateAttributoInputAttributoType'JSONSchemaInteger a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonCreateAttributoInputAttributoType'JSONSchemaNumber a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonCreateAttributoInputAttributoType'JSONSchemaString a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonCreateAttributoInputAttributoType'JSONSchemaArray a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonCreateAttributoInputAttributoType'JSONSchemaBoolean a) = Data.Aeson.Types.ToJSON.toJSON a}
-instance Data.Aeson.Types.FromJSON.FromJSON JsonCreateAttributoInputAttributoType'Variants
-    where {parseJSON val = case (JsonCreateAttributoInputAttributoType'JSONSchemaInteger Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonCreateAttributoInputAttributoType'JSONSchemaNumber Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonCreateAttributoInputAttributoType'JSONSchemaString Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonCreateAttributoInputAttributoType'JSONSchemaArray Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonCreateAttributoInputAttributoType'JSONSchemaBoolean Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> Data.Aeson.Types.Internal.Error "No variant matched")))) of
-                           {Data.Aeson.Types.Internal.Success a -> GHC.Base.pure a;
-                            Data.Aeson.Types.Internal.Error a -> Control.Monad.Fail.fail a}}
+mkJsonCreateAttributoInput jsonCreateAttributoInputAssociatedTable jsonCreateAttributoInputBeamtimeId jsonCreateAttributoInputDescription jsonCreateAttributoInputGroup jsonCreateAttributoInputName = JsonCreateAttributoInput{jsonCreateAttributoInputAssociatedTable = jsonCreateAttributoInputAssociatedTable,
+                                                                                                                                                                                                                                jsonCreateAttributoInputAttributoTypeArray = GHC.Maybe.Nothing,
+                                                                                                                                                                                                                                jsonCreateAttributoInputAttributoTypeBoolean = GHC.Maybe.Nothing,
+                                                                                                                                                                                                                                jsonCreateAttributoInputAttributoTypeInteger = GHC.Maybe.Nothing,
+                                                                                                                                                                                                                                jsonCreateAttributoInputAttributoTypeNumber = GHC.Maybe.Nothing,
+                                                                                                                                                                                                                                jsonCreateAttributoInputAttributoTypeString = GHC.Maybe.Nothing,
+                                                                                                                                                                                                                                jsonCreateAttributoInputBeamtimeId = jsonCreateAttributoInputBeamtimeId,
+                                                                                                                                                                                                                                jsonCreateAttributoInputDescription = jsonCreateAttributoInputDescription,
+                                                                                                                                                                                                                                jsonCreateAttributoInputGroup = jsonCreateAttributoInputGroup,
+                                                                                                                                                                                                                                jsonCreateAttributoInputName = jsonCreateAttributoInputName}

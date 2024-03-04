@@ -45,8 +45,16 @@ import {-# SOURCE #-} AmarcordApi.Types.JSONSchemaString
 data JsonAttributo = JsonAttributo {
   -- | associated_table: An enumeration.
   jsonAttributoAssociatedTable :: AssociatedTable
-  -- | attributo_type
-  , jsonAttributoAttributoType :: JsonAttributoAttributoType'Variants
+  -- | attributo_type_array
+  , jsonAttributoAttributoTypeArray :: (GHC.Maybe.Maybe JSONSchemaArray)
+  -- | attributo_type_boolean
+  , jsonAttributoAttributoTypeBoolean :: (GHC.Maybe.Maybe JSONSchemaBoolean)
+  -- | attributo_type_integer
+  , jsonAttributoAttributoTypeInteger :: (GHC.Maybe.Maybe JSONSchemaInteger)
+  -- | attributo_type_number
+  , jsonAttributoAttributoTypeNumber :: (GHC.Maybe.Maybe JSONSchemaNumber)
+  -- | attributo_type_string
+  , jsonAttributoAttributoTypeString :: (GHC.Maybe.Maybe JSONSchemaString)
   -- | description
   , jsonAttributoDescription :: Data.Text.Internal.Text
   -- | group
@@ -58,41 +66,24 @@ data JsonAttributo = JsonAttributo {
   } deriving (GHC.Show.Show
   , GHC.Classes.Eq)
 instance Data.Aeson.Types.ToJSON.ToJSON JsonAttributo
-    where {toJSON obj = Data.Aeson.Types.Internal.object (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonAttributoAssociatedTable obj] : ["attributo_type" Data.Aeson.Types.ToJSON..= jsonAttributoAttributoType obj] : ["description" Data.Aeson.Types.ToJSON..= jsonAttributoDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonAttributoGroup obj] : ["id" Data.Aeson.Types.ToJSON..= jsonAttributoId obj] : ["name" Data.Aeson.Types.ToJSON..= jsonAttributoName obj] : GHC.Base.mempty));
-           toEncoding obj = Data.Aeson.Encoding.Internal.pairs (GHC.Base.mconcat (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonAttributoAssociatedTable obj] : ["attributo_type" Data.Aeson.Types.ToJSON..= jsonAttributoAttributoType obj] : ["description" Data.Aeson.Types.ToJSON..= jsonAttributoDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonAttributoGroup obj] : ["id" Data.Aeson.Types.ToJSON..= jsonAttributoId obj] : ["name" Data.Aeson.Types.ToJSON..= jsonAttributoName obj] : GHC.Base.mempty)))}
+    where {toJSON obj = Data.Aeson.Types.Internal.object (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonAttributoAssociatedTable obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_array" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeArray obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_boolean" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeBoolean obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_integer" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeInteger obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_number" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeNumber obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_string" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeString obj) : ["description" Data.Aeson.Types.ToJSON..= jsonAttributoDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonAttributoGroup obj] : ["id" Data.Aeson.Types.ToJSON..= jsonAttributoId obj] : ["name" Data.Aeson.Types.ToJSON..= jsonAttributoName obj] : GHC.Base.mempty));
+           toEncoding obj = Data.Aeson.Encoding.Internal.pairs (GHC.Base.mconcat (Data.Foldable.concat (["associated_table" Data.Aeson.Types.ToJSON..= jsonAttributoAssociatedTable obj] : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_array" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeArray obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_boolean" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeBoolean obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_integer" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeInteger obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_number" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeNumber obj) : Data.Maybe.maybe GHC.Base.mempty (GHC.Base.pure GHC.Base.. ("attributo_type_string" Data.Aeson.Types.ToJSON..=)) (jsonAttributoAttributoTypeString obj) : ["description" Data.Aeson.Types.ToJSON..= jsonAttributoDescription obj] : ["group" Data.Aeson.Types.ToJSON..= jsonAttributoGroup obj] : ["id" Data.Aeson.Types.ToJSON..= jsonAttributoId obj] : ["name" Data.Aeson.Types.ToJSON..= jsonAttributoName obj] : GHC.Base.mempty)))}
 instance Data.Aeson.Types.FromJSON.FromJSON JsonAttributo
-    where {parseJSON = Data.Aeson.Types.FromJSON.withObject "JsonAttributo" (\obj -> (((((GHC.Base.pure JsonAttributo GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "associated_table")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "attributo_type")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "description")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "group")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "id")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "name"))}
+    where {parseJSON = Data.Aeson.Types.FromJSON.withObject "JsonAttributo" (\obj -> (((((((((GHC.Base.pure JsonAttributo GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "associated_table")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_array")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_boolean")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_integer")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_number")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..:! "attributo_type_string")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "description")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "group")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "id")) GHC.Base.<*> (obj Data.Aeson.Types.FromJSON..: "name"))}
 -- | Create a new 'JsonAttributo' with all required fields.
 mkJsonAttributo :: AssociatedTable -- ^ 'jsonAttributoAssociatedTable'
-  -> JsonAttributoAttributoType'Variants -- ^ 'jsonAttributoAttributoType'
   -> Data.Text.Internal.Text -- ^ 'jsonAttributoDescription'
   -> Data.Text.Internal.Text -- ^ 'jsonAttributoGroup'
   -> GHC.Types.Int -- ^ 'jsonAttributoId'
   -> Data.Text.Internal.Text -- ^ 'jsonAttributoName'
   -> JsonAttributo
-mkJsonAttributo jsonAttributoAssociatedTable jsonAttributoAttributoType jsonAttributoDescription jsonAttributoGroup jsonAttributoId jsonAttributoName = JsonAttributo{jsonAttributoAssociatedTable = jsonAttributoAssociatedTable,
-                                                                                                                                                                      jsonAttributoAttributoType = jsonAttributoAttributoType,
-                                                                                                                                                                      jsonAttributoDescription = jsonAttributoDescription,
-                                                                                                                                                                      jsonAttributoGroup = jsonAttributoGroup,
-                                                                                                                                                                      jsonAttributoId = jsonAttributoId,
-                                                                                                                                                                      jsonAttributoName = jsonAttributoName}
--- | Defines the oneOf schema located at @components.schemas.JsonAttributo.properties.attributo_type.oneOf@ in the specification.
--- 
--- 
-data JsonAttributoAttributoType'Variants =
-   JsonAttributoAttributoType'JSONSchemaInteger JSONSchemaInteger
-  | JsonAttributoAttributoType'JSONSchemaNumber JSONSchemaNumber
-  | JsonAttributoAttributoType'JSONSchemaString JSONSchemaString
-  | JsonAttributoAttributoType'JSONSchemaArray JSONSchemaArray
-  | JsonAttributoAttributoType'JSONSchemaBoolean JSONSchemaBoolean
-  deriving (GHC.Show.Show, GHC.Classes.Eq)
-instance Data.Aeson.Types.ToJSON.ToJSON JsonAttributoAttributoType'Variants
-    where {toJSON (JsonAttributoAttributoType'JSONSchemaInteger a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonAttributoAttributoType'JSONSchemaNumber a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonAttributoAttributoType'JSONSchemaString a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonAttributoAttributoType'JSONSchemaArray a) = Data.Aeson.Types.ToJSON.toJSON a;
-           toJSON (JsonAttributoAttributoType'JSONSchemaBoolean a) = Data.Aeson.Types.ToJSON.toJSON a}
-instance Data.Aeson.Types.FromJSON.FromJSON JsonAttributoAttributoType'Variants
-    where {parseJSON val = case (JsonAttributoAttributoType'JSONSchemaInteger Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonAttributoAttributoType'JSONSchemaNumber Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonAttributoAttributoType'JSONSchemaString Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonAttributoAttributoType'JSONSchemaArray Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> ((JsonAttributoAttributoType'JSONSchemaBoolean Data.Functor.<$> Data.Aeson.Types.FromJSON.fromJSON val) GHC.Base.<|> Data.Aeson.Types.Internal.Error "No variant matched")))) of
-                           {Data.Aeson.Types.Internal.Success a -> GHC.Base.pure a;
-                            Data.Aeson.Types.Internal.Error a -> Control.Monad.Fail.fail a}}
+mkJsonAttributo jsonAttributoAssociatedTable jsonAttributoDescription jsonAttributoGroup jsonAttributoId jsonAttributoName = JsonAttributo{jsonAttributoAssociatedTable = jsonAttributoAssociatedTable,
+                                                                                                                                           jsonAttributoAttributoTypeArray = GHC.Maybe.Nothing,
+                                                                                                                                           jsonAttributoAttributoTypeBoolean = GHC.Maybe.Nothing,
+                                                                                                                                           jsonAttributoAttributoTypeInteger = GHC.Maybe.Nothing,
+                                                                                                                                           jsonAttributoAttributoTypeNumber = GHC.Maybe.Nothing,
+                                                                                                                                           jsonAttributoAttributoTypeString = GHC.Maybe.Nothing,
+                                                                                                                                           jsonAttributoDescription = jsonAttributoDescription,
+                                                                                                                                           jsonAttributoGroup = jsonAttributoGroup,
+                                                                                                                                           jsonAttributoId = jsonAttributoId,
+                                                                                                                                           jsonAttributoName = jsonAttributoName}

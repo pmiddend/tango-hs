@@ -7,8 +7,3 @@ instance Show JsonCreateAttributoInput
 instance Eq JsonCreateAttributoInput
 instance FromJSON JsonCreateAttributoInput
 instance ToJSON JsonCreateAttributoInput
-data JsonCreateAttributoInputAttributoType'Variants
-instance Show JsonCreateAttributoInputAttributoType'Variants
-instance Eq JsonCreateAttributoInputAttributoType'Variants
-instance FromJSON JsonCreateAttributoInputAttributoType'Variants
-instance ToJSON JsonCreateAttributoInputAttributoType'Variants
