@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
@@ -38,11 +39,12 @@ import Options.Applicative ((<**>))
 import qualified Options.Applicative as Opt
 import qualified Tango
 import qualified TangoHL
+import Text.Printf (printf)
 import qualified UnliftIO
 import Web.Scotty (file, get, html, param, post, scotty, setHeader, text)
 
 data CollectionConfig = CollectionConfig
-  { configIndexedFpsLowWatermark :: Float,
+  { configIndexedFpsLowWatermark :: Double,
     configTargetIndexedFrames :: Int,
     configFramesPerRun :: Int,
     configDataSetId :: Int
@@ -55,6 +57,9 @@ data CliOptions = CliOptions
     cliAmarcordUrl :: Text,
     cliP11RunnerIdentifier :: Text
   }
+
+packShow :: Show a => a -> Text
+packShow = pack . show
 
 cliOptionsParser :: Opt.Parser CliOptions
 cliOptionsParser =
@@ -146,18 +151,18 @@ runningWindowSize = 12
 peekTimeSeconds :: Int
 peekTimeSeconds = 5
 
-calculateIndexedFpsInWindow :: NE.NonEmpty IndexedFrames -> Maybe Float
+calculateIndexedFpsInWindow :: NE.NonEmpty IndexedFrames -> Maybe Double
 calculateIndexedFpsInWindow indexedFrames =
   if NE.length indexedFrames < runningWindowSize
     then Nothing
     else calculateIndexedFps indexedFrames
 
-calculateIndexedFps :: NE.NonEmpty IndexedFrames -> Maybe Float
+calculateIndexedFps :: NE.NonEmpty IndexedFrames -> Maybe Double
 calculateIndexedFps indexedFrames =
   let first' = NE.head indexedFrames
       last' = NE.last indexedFrames
       timeDiff = nominalDiffTimeToSeconds (indexedFramesTime last' `diffUTCTime` indexedFramesTime first')
-   in Just $ realToFrac @Integer @Float (fromIntegral (indexedFramesFrames last' - indexedFramesFrames first')) / realToFrac timeDiff
+   in Just $ realToFrac @Int @Double (fromIntegral (indexedFramesFrames last' - indexedFramesFrames first')) / realToFrac timeDiff
 
 consLimitedNe :: a -> NE.NonEmpty a -> NE.NonEmpty a
 consLimitedNe newElement oldElements =
@@ -333,27 +338,55 @@ targetIndexedFramesParam = "targetIndexedFrames"
 framesPerRunParam :: (IsString a) => a
 framesPerRunParam = "framesPerRun"
 
+formatIntHumanFriendly :: Int -> Text
+formatIntHumanFriendly = packShow
+
+formatFloatHumanFriendly :: Double -> Text
+formatFloatHumanFriendly = pack . printf "%.2f"
+
 currentStateHtml :: UTCTime -> TimeZone -> Maybe CollectionLoopState -> L.HtmlT Identity ()
 currentStateHtml currentTime tz currentState =
   case currentState of
     Nothing -> L.div_ [L.class_ "form-text"] (L.p_ "Please select a data set and start collecting!")
-    Just (CollectionLoopState {loopStateLog = loglines}) ->
-      L.div_ [L.class_ "row"] $
-        do
-          L.div_ [L.class_ "col-6"] $ do
-            L.h3_ "Stats"
-            L.p_ $ do
-              case currentState >>= NE.nonEmpty . take runningWindowSize . loopStateIndexedFrameHistory of
-                Nothing -> mempty
-                Just frameHistoryNonEmpty ->
-                  L.strong_ (L.toHtml $ "FPS: " <> pack (show (calculateIndexedFps frameHistoryNonEmpty)))
-            L.h3_ "Log"
-            L.ul_ (mapM_ (\(LogMessage {logTime = t, logMessage = m}) -> L.li_ (L.span_ [L.class_ "text-muted"] (L.toHtml $ formatTime defaultTimeLocale "%T" (utcToLocalTime tz t)) <> " " <> L.toHtml m)) loglines)
-          L.div_ [L.class_ "col-6"] $ do
-            L.img_
-              [ L.src_ ("/chart?time=" <> pack (show (utcTimeToPOSIXSeconds currentTime))),
-                L.style_ "width: 100%"
-              ]
+    Just
+      ( CollectionLoopState
+          { loopStateLog = loglines,
+            loopStateCollectionConfig =
+              CollectionConfig
+                { configDataSetId = dsId,
+                  configTargetIndexedFrames = targetIndexedFrames,
+                  configFramesPerRun = framesPerRun,
+                  configIndexedFpsLowWatermark = indexedFpsLowWatermark
+                }
+          }
+        ) ->
+        L.div_ [L.class_ "row"] $
+          do
+            L.div_ [L.class_ "col-6"] $ do
+              L.h3_ "Info"
+              L.dl_ do
+                L.dt_ "Data Set ID"
+                L.dd_ (L.toHtml (packShow dsId))
+                L.dt_ "Indexed Frame Target"
+                L.dd_ (L.toHtml (formatIntHumanFriendly targetIndexedFrames))
+                L.dt_ "Frames per Run"
+                L.dd_ (L.toHtml (formatIntHumanFriendly framesPerRun))
+                L.dt_ "Indexed FPS Low Watermark"
+                L.dd_ (L.toHtml (formatFloatHumanFriendly indexedFpsLowWatermark))
+              L.h3_ "Stats"
+              stopForm
+              L.p_ do
+                case currentState >>= NE.nonEmpty . take runningWindowSize . loopStateIndexedFrameHistory >>= calculateIndexedFps of
+                  Nothing -> mempty
+                  Just frameHistoryNonEmpty ->
+                    L.strong_ (L.toHtml $ "FPS: " <> formatFloatHumanFriendly frameHistoryNonEmpty)
+              L.h3_ "Log"
+              L.ul_ (mapM_ (\(LogMessage {logTime = t, logMessage = m}) -> L.li_ (L.span_ [L.class_ "text-muted"] (L.toHtml $ formatTime defaultTimeLocale "%T" (utcToLocalTime tz t)) <> " " <> L.toHtml m)) loglines)
+            L.div_ [L.class_ "col-6"] do
+              L.img_
+                [ L.src_ ("/chart?time=" <> pack (show (utcTimeToPOSIXSeconds currentTime))),
+                  L.style_ "width: 100%"
+                ]
 
 htmlSkeleton :: (Monad m) => L.HtmlT m a -> L.HtmlT m a
 htmlSkeleton content = do
@@ -455,18 +488,16 @@ startForm currentState dataSets =
       makeOption :: (Monad m) => Api.JsonDataSet -> L.HtmlT m ()
       makeOption (Api.JsonDataSet {Api.jsonDataSetId = dataSetId, Api.jsonDataSetAttributi = attributi}) =
         L.option_
-          ([L.value_ (pack (show dataSetId))] <> [L.disabled_ "true" | Just dataSetId == (configDataSetId . loopStateCollectionConfig <$> currentState)])
-          (L.toHtml $ pack (show dataSetId) <> ": " <> intercalate ", " (attributoValueToText <$> attributi))
+          ([L.value_ (packShow dataSetId)] <> [L.selected_ "true" | Just dataSetId == (configDataSetId . loopStateCollectionConfig <$> currentState)])
+          (L.toHtml $ packShow dataSetId <> ": " <> intercalate ", " (attributoValueToText <$> attributi))
    in L.form_ [LX.hxPost_ "/start"] $ do
         L.div_ [L.class_ "mb-3"] $
           L.div_ [L.class_ "form-floating"] $ do
             L.select_
-              ( [ L.class_ "form-select",
-                  L.name_ dataSetIdParam,
-                  L.id_ "dataSetIdSelect"
-                ]
-                  <> [L.disabled_ "true" | isJust currentState]
-              )
+              [ L.class_ "form-select",
+                L.name_ dataSetIdParam,
+                L.id_ "dataSetIdSelect"
+              ]
               (mapM_ makeOption (Api.jsonReadDataSetsDataSets dataSets))
             L.label_ [L.for_ "dataSetIdSelect"] "Data Set"
         L.div_ [L.class_ "row mb-3"] $ do
@@ -475,7 +506,8 @@ startForm currentState dataSets =
               L.input_
                 [ L.type_ "number",
                   L.name_ targetIndexedFramesParam,
-                  L.value_ "10000",
+                  L.value_
+                    (maybe "10000" (packShow . configTargetIndexedFrames . loopStateCollectionConfig) currentState),
                   L.min_ "1",
                   L.step_ "1",
                   L.id_ targetIndexedFramesParam,
@@ -487,7 +519,7 @@ startForm currentState dataSets =
               L.input_
                 [ L.type_ "number",
                   L.name_ indexedFpsLowWatermarkParam,
-                  L.value_ "2",
+                  L.value_ (maybe "2" (packShow . configIndexedFpsLowWatermark . loopStateCollectionConfig) currentState),
                   L.min_ "0",
                   L.step_ "0.01",
                   L.id_ indexedFpsLowWatermarkParam,
@@ -501,7 +533,7 @@ startForm currentState dataSets =
               L.input_
                 [ L.type_ "number",
                   L.name_ framesPerRunParam,
-                  L.value_ "100",
+                  L.value_ (maybe "100" (packShow . configFramesPerRun . loopStateCollectionConfig) currentState),
                   L.min_ "1",
                   L.step_ "1",
                   L.id_ framesPerRunParam,
@@ -547,7 +579,9 @@ runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = 
     currentThreadId <- UnliftIO.readIORef currentThread
     liftIO $ for_ currentThreadId killThread
     currentState <- UnliftIO.readIORef currentLoopState
-    html $ renderText $ startForm currentState dataSets
+    currentTime <- liftIO getCurrentTime
+    tz <- liftIO getCurrentTimeZone
+    html $ renderText $ currentStateHtml currentTime tz currentState
   post "/start" $ do
     collectionConfig <-
       CollectionConfig
@@ -561,7 +595,8 @@ runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = 
           atomicWriteIORefVoid currentThread Nothing
     newThreadId <- liftIO $ forkFinally (collectionLoop cliOptions collectionConfig currentLoopState) doneHandler
     atomicWriteIORefVoid currentThread (Just newThreadId)
-    html $ renderText $ L.div_ [] stopForm
+    currentState <- UnliftIO.readIORef currentLoopState
+    html $ renderText $ startForm currentState dataSets
   get "/current-state" $ do
     currentState <- UnliftIO.readIORef currentLoopState
     tz <- liftIO getCurrentTimeZone
@@ -580,12 +615,9 @@ runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = 
       renderText $
         htmlSkeleton $ do
           L.h2_ $ L.toHtml $ Api.jsonBeamtimeTitle beamtimeMetadata
-          case currentState of
-            Nothing -> startForm currentState dataSets
-            Just _ -> L.div_ [LX.hxGet_ "/form-state", LX.hxTrigger_ "every 1s"] stopForm
+          startForm currentState dataSets
           L.hr_ []
-          L.div_ [LX.hxTrigger_ "every 10s", LX.hxGet_ "/current-state"] $ do
-            currentStateHtml currentTime tz currentState
+          L.div_ [LX.hxTrigger_ "every 10s", LX.hxGet_ "/current-state"] $ currentStateHtml currentTime tz currentState
 
 main :: IO ()
 main = do
