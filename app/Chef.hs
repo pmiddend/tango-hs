@@ -19,11 +19,13 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Ratio ((%))
 import Data.String (IsString)
 import Data.Text (Text, intercalate, pack, unpack)
-import Data.Time.Clock (UTCTime, diffUTCTime, getCurrentTime, nominalDiffTimeToSeconds)
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
+import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime, nominalDiffTimeToSeconds)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import Data.Time.LocalTime (TimeZone, getCurrentTimeZone, utcToLocalTime)
+import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
+import Graphics.Rendering.Chart.Easy (def, layout_title, line, plot, plotLeft, plotRight, (.=))
 import Log.Backend.StandardOutput (withStdOutLogger)
 import Log.Class (MonadLog, localDomain, logAttention_, logInfo_)
 import Log.Data (defaultLogLevel)
@@ -37,7 +39,7 @@ import qualified Options.Applicative as Opt
 import qualified Tango
 import qualified TangoHL
 import qualified UnliftIO
-import Web.Scotty (get, html, param, post, scotty)
+import Web.Scotty (file, get, html, param, post, scotty, setHeader, text)
 
 data CollectionConfig = CollectionConfig
   { configIndexedFpsLowWatermark :: Float,
@@ -63,8 +65,8 @@ cliOptionsParser =
     <*> Opt.strOption (Opt.long "p11-runner-identifier")
 
 data IndexedFrames = IndexedFrames
-  { indexedFramesFrames :: Int,
-    indexedFramesTime :: UTCTime
+  { indexedFramesFrames :: !Int,
+    indexedFramesTime :: !UTCTime
   }
   deriving (Show)
 
@@ -139,17 +141,23 @@ readRunnerStatus runner = do
     invalidStatusCode -> error $ "invalid status code " <> unpack invalidStatusCode
 
 runningWindowSize :: Int
-runningWindowSize = 5
+runningWindowSize = 12
+
+peekTimeSeconds :: Int
+peekTimeSeconds = 5
+
+calculateIndexedFpsInWindow :: NE.NonEmpty IndexedFrames -> Maybe Float
+calculateIndexedFpsInWindow indexedFrames =
+  if NE.length indexedFrames < runningWindowSize
+    then Nothing
+    else calculateIndexedFps indexedFrames
 
 calculateIndexedFps :: NE.NonEmpty IndexedFrames -> Maybe Float
 calculateIndexedFps indexedFrames =
-  if NE.length indexedFrames < runningWindowSize
-    then Nothing
-    else
-      let first' = NE.head indexedFrames
-          last' = NE.last indexedFrames
-          timeDiff = nominalDiffTimeToSeconds (indexedFramesTime last' `diffUTCTime` indexedFramesTime first')
-       in Just $ realToFrac @Integer @Float (fromIntegral (indexedFramesFrames last' - indexedFramesFrames first')) / realToFrac timeDiff
+  let first' = NE.head indexedFrames
+      last' = NE.last indexedFrames
+      timeDiff = nominalDiffTimeToSeconds (indexedFramesTime last' `diffUTCTime` indexedFramesTime first')
+   in Just $ realToFrac @Integer @Float (fromIntegral (indexedFramesFrames last' - indexedFramesFrames first')) / realToFrac timeDiff
 
 consLimitedNe :: a -> NE.NonEmpty a -> NE.NonEmpty a
 consLimitedNe newElement oldElements =
@@ -165,7 +173,8 @@ data LogMessage = LogMessage
   deriving (Show)
 
 data CollectionLoopState = CollectionLoopState
-  { loopStateIndexedFrameHistory :: [IndexedFrames],
+  { loopStateIndexedFrameHistory :: ![IndexedFrames],
+    loopStateRunIds :: ![(UTCTime, Int)],
     loopStateCollectionConfig :: CollectionConfig,
     loopStateLog :: [LogMessage]
   }
@@ -188,6 +197,7 @@ collectionLoop cliOptions collectionConfig loopStateRef = withStdOutLogger $ \lo
     ( Just
         ( CollectionLoopState
             { loopStateIndexedFrameHistory = [],
+              loopStateRunIds = [],
               loopStateCollectionConfig = collectionConfig,
               loopStateLog = []
             }
@@ -203,6 +213,19 @@ collectionLoop cliOptions collectionConfig loopStateRef = withStdOutLogger $ \lo
         (cliP11RunnerIdentifier cliOptions)
         (withRunner cliOptions collectionConfig loopStateRef)
 
+appendIndexedFrames :: (MonadIO m) => IORef (Maybe CollectionLoopState) -> IndexedFrames -> m ()
+appendIndexedFrames loopStateRef indF =
+  atomicModifyIORefVoid
+    loopStateRef
+    (\maybeCurrentState -> (\currentState -> currentState {loopStateIndexedFrameHistory = indF : loopStateIndexedFrameHistory currentState}) <$> maybeCurrentState)
+
+appendRunId :: (MonadIO m) => IORef (Maybe CollectionLoopState) -> Int -> m ()
+appendRunId loopStateRef newRunId = do
+  currentTime <- liftIO getCurrentTime
+  atomicModifyIORefVoid
+    loopStateRef
+    (\maybeCurrentState -> (\currentState -> currentState {loopStateRunIds = (currentTime, newRunId) : loopStateRunIds currentState}) <$> maybeCurrentState)
+
 collectionLoop' ::
   (UnliftIO.MonadUnliftIO m, MonadLog m) =>
   CliOptions ->
@@ -212,13 +235,13 @@ collectionLoop' ::
   NE.NonEmpty IndexedFrames ->
   m ()
 collectionLoop' cliOptions collectionConfig loopStateRef runner indexedFrameList = do
-  logInfo loopStateRef "📡 Waiting for 30s"
-  liftIO $ threadDelay (1000 * 1000 * 30)
+  logInfo loopStateRef $ "📡 Waiting for " <> pack (show peekTimeSeconds) <> "s"
+  liftIO $ threadDelay (1000 * 1000 * peekTimeSeconds)
 
   logInfo loopStateRef "📡 Let's see if we are still collecting..."
 
   statusCode <- readRunnerStatus runner
-  let indexedFpsHighEnough = case calculateIndexedFps indexedFrameList of
+  let indexedFpsHighEnough = case calculateIndexedFpsInWindow indexedFrameList of
         Just indexedFps -> indexedFps >= configIndexedFpsLowWatermark collectionConfig
         Nothing -> True
 
@@ -235,10 +258,17 @@ collectionLoop' cliOptions collectionConfig loopStateRef runner indexedFrameList
         then do
           logInfo loopStateRef "🔢 Run is over, and the indexed FPS looks good, starting another run"
           startRun loopStateRef (configFramesPerRun collectionConfig) runner
+          runId <- TangoHL.readIntAttribute runner "run_id"
+          appendRunId loopStateRef runId
           pure True
-        else do
-          logAttention_ "⚠ Oh no 🙁 We are at the end of the run, but the indexed frames per second is too low. Stopping the main loop."
-          pure False
+        else
+          if indexedFramesFrames (NE.head indexedFrameList) > configTargetIndexedFrames collectionConfig
+            then do
+              logAttention_ "🎉 We have arrived at the desired number of frames, stopping!"
+              pure False
+            else do
+              logAttention_ "⚠ Oh no 🙁 We are at the end of the run, but the indexed frames per second is too low. Stopping the main loop."
+              pure False
     PreparingForMeasurement -> pure True
     UnknownMoving -> pure True
     _otherState -> pure False
@@ -252,6 +282,7 @@ collectionLoop' cliOptions collectionConfig loopStateRef runner indexedFrameList
           Left e -> logAttention_ $ "⚠ error retrieving indexed frames: " <> e
           Right indF@(IndexedFrames {indexedFramesFrames}) -> do
             logInfo loopStateRef $ "🔢 got " <> pack (show indexedFramesFrames) <> " indexed frames for data set"
+            appendIndexedFrames loopStateRef indF
             collectionLoop' cliOptions collectionConfig loopStateRef runner (consLimitedNe indF indexedFrameList)
 
 atomicModifyIORefVoid :: (MonadIO m) => IORef t -> (t -> t) -> m ()
@@ -266,13 +297,14 @@ withRunner cliOptions collectionConfig loopStateRef runner = do
     case indexedFramesResult of
       Left e -> logAttention_ $ "⚠ error retrieving data set: " <> e
       Right indF@(IndexedFrames {indexedFramesFrames}) -> do
-        atomicModifyIORefVoid
-          loopStateRef
-          (\maybeCurrentState -> (\currentState -> currentState {loopStateIndexedFrameHistory = indF : loopStateIndexedFrameHistory currentState}) <$> maybeCurrentState)
+        appendIndexedFrames loopStateRef indF
         logInfo loopStateRef $ "🔢 got " <> pack (show indexedFramesFrames) <> " indexed frames for data set"
         if indexedFramesFrames > configTargetIndexedFrames collectionConfig
           then logInfo loopStateRef "🔢 Aha! We already have enough indexed frames. Please choose a higher target to collect more."
           else do
+            runId <- TangoHL.readIntAttribute runner "run_id"
+            appendRunId loopStateRef runId
+            logInfo loopStateRef $ "📡 Latest run ID is " <> pack (show runId) <> "..."
             logInfo loopStateRef "📡 Let's check the P11 runner's status..."
             statusCode <- readRunnerStatus runner
             logInfo loopStateRef $ "📡 Status is " <> pack (show statusCode)
@@ -289,29 +321,41 @@ withRunner cliOptions collectionConfig loopStateRef runner = do
                 pure False
             when continue $ collectionLoop' cliOptions collectionConfig loopStateRef runner (NE.singleton indF)
 
-dataSetIdParam :: IsString a => a
+dataSetIdParam :: (IsString a) => a
 dataSetIdParam = "dataSetId"
 
-indexedFpsLowWatermarkParam :: IsString a => a
+indexedFpsLowWatermarkParam :: (IsString a) => a
 indexedFpsLowWatermarkParam = "indexedFpsLowWatermark"
 
-targetIndexedFramesParam :: IsString a => a
+targetIndexedFramesParam :: (IsString a) => a
 targetIndexedFramesParam = "targetIndexedFrames"
 
-framesPerRunParam :: IsString a => a
+framesPerRunParam :: (IsString a) => a
 framesPerRunParam = "framesPerRun"
 
-currentStateHtml :: TimeZone -> Maybe CollectionLoopState -> L.HtmlT Identity ()
-currentStateHtml tz currentState =
+currentStateHtml :: UTCTime -> TimeZone -> Maybe CollectionLoopState -> L.HtmlT Identity ()
+currentStateHtml currentTime tz currentState =
   case currentState of
     Nothing -> L.div_ [L.class_ "form-text"] (L.p_ "Please select a data set and start collecting!")
     Just (CollectionLoopState {loopStateLog = loglines}) ->
-      L.div_ $
+      L.div_ [L.class_ "row"] $
         do
-          L.h3_ "Log"
-          L.ul_ (mapM_ (\(LogMessage {logTime = t, logMessage = m}) -> L.li_ (L.span_ [L.class_ "text-muted"] (L.toHtml $ formatTime defaultTimeLocale "%T" (utcToLocalTime tz t)) <> " " <> L.toHtml m)) loglines)
+          L.div_ [L.class_ "col-6"] $ do
+            L.h3_ "Stats"
+            L.p_ $ do
+              case currentState >>= NE.nonEmpty . take runningWindowSize . loopStateIndexedFrameHistory of
+                Nothing -> mempty
+                Just frameHistoryNonEmpty ->
+                  L.strong_ (L.toHtml $ "FPS: " <> pack (show (calculateIndexedFps frameHistoryNonEmpty)))
+            L.h3_ "Log"
+            L.ul_ (mapM_ (\(LogMessage {logTime = t, logMessage = m}) -> L.li_ (L.span_ [L.class_ "text-muted"] (L.toHtml $ formatTime defaultTimeLocale "%T" (utcToLocalTime tz t)) <> " " <> L.toHtml m)) loglines)
+          L.div_ [L.class_ "col-6"] $ do
+            L.img_
+              [ L.src_ ("/chart?time=" <> pack (show (utcTimeToPOSIXSeconds currentTime))),
+                L.style_ "width: 100%"
+              ]
 
-htmlSkeleton :: Monad m => L.HtmlT m a -> L.HtmlT m a
+htmlSkeleton :: (Monad m) => L.HtmlT m a -> L.HtmlT m a
 htmlSkeleton content = do
   L.doctypehtml_ $ do
     L.head_ $ do
@@ -391,12 +435,12 @@ attributoValueAndTypeToText chemicalIdToType value type_ =
     Right (TypedAttributoValueNumber n _numberSchema) -> pack (show n)
     Left e -> "error: " <> e
 
-stopForm :: Monad m => L.HtmlT m ()
+stopForm :: (Monad m) => L.HtmlT m ()
 stopForm =
   L.form_ [LX.hxPost_ "/stop"] $ do
     L.button_ [L.class_ "btn btn-warning mb-3", L.type_ "submit"] "Stop collection"
 
-startForm :: Monad m => Maybe CollectionLoopState -> Api.JsonReadDataSets -> L.HtmlT m ()
+startForm :: (Monad m) => Maybe CollectionLoopState -> Api.JsonReadDataSets -> L.HtmlT m ()
 startForm currentState dataSets =
   let attributoIdToType :: Map.Map Int Api.JsonAttributo
       attributoIdToType = Map.fromList ((\a -> (Api.jsonAttributoId a, a)) <$> Api.jsonReadDataSetsAttributi dataSets)
@@ -445,7 +489,7 @@ startForm currentState dataSets =
                   L.name_ indexedFpsLowWatermarkParam,
                   L.value_ "2",
                   L.min_ "0",
-                  L.step_ "0.1",
+                  L.step_ "0.01",
                   L.id_ indexedFpsLowWatermarkParam,
                   L.class_ "form-control"
                 ]
@@ -468,6 +512,36 @@ startForm currentState dataSets =
 
 runServer :: CliOptions -> IORef (Maybe CollectionLoopState) -> IORef (Maybe ThreadId) -> Api.JsonBeamtime -> Api.JsonReadDataSets -> IO ()
 runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = scotty (cliWebPort cliOptions) $ do
+  get "/chart" $ do
+    currentState <- UnliftIO.readIORef currentLoopState
+    case currentState of
+      Nothing -> text ""
+      Just (CollectionLoopState {loopStateIndexedFrameHistory = frameHistory, loopStateRunIds = runIds}) ->
+        case NE.nonEmpty frameHistory of
+          Nothing -> text ""
+          Just nonEmptyHistory -> do
+            let historyOldToNew = NE.reverse nonEmptyHistory
+                oldestTime = indexedFramesTime (NE.head historyOldToNew)
+                runIdPoints :: [(Float, Int)]
+                runIdPoints =
+                  [ ( realToFrac @NominalDiffTime @Float (time `diffUTCTime` oldestTime),
+                      runId
+                    )
+                    | (time, runId) <- runIds
+                  ]
+                fpsPoints :: [(Float, Int)]
+                fpsPoints =
+                  [ ( realToFrac @NominalDiffTime @Float (time `diffUTCTime` oldestTime),
+                      fromIntegral frames
+                    )
+                    | IndexedFrames frames time <- NE.toList historyOldToNew
+                  ]
+            liftIO $ toFile def "chart.svg" $ do
+              -- layout_title .= "Indexing statistics"
+              plotLeft (line "Indexed frames" [fpsPoints])
+              plotRight (line "Run IDs" [runIdPoints])
+            setHeader "Content-Type" "image/svg+xml"
+            file "chart.svg"
   post "/stop" $ do
     liftIO $ TangoHL.withDeviceProxy (cliP11RunnerIdentifier cliOptions) $ \runner -> TangoHL.commandInOutVoid runner "stop_run"
     currentThreadId <- UnliftIO.readIORef currentThread
@@ -487,24 +561,31 @@ runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = 
           atomicWriteIORefVoid currentThread Nothing
     newThreadId <- liftIO $ forkFinally (collectionLoop cliOptions collectionConfig currentLoopState) doneHandler
     atomicWriteIORefVoid currentThread (Just newThreadId)
-    html $ renderText stopForm
+    html $ renderText $ L.div_ [] stopForm
   get "/current-state" $ do
     currentState <- UnliftIO.readIORef currentLoopState
     tz <- liftIO getCurrentTimeZone
-    html $ renderText $ currentStateHtml tz currentState
+    currentTime <- liftIO getCurrentTime
+    html $ renderText $ currentStateHtml currentTime tz currentState
+  get "/form-state" $ do
+    currentState <- UnliftIO.readIORef currentLoopState
+    html $ renderText $ case currentState of
+      Nothing -> startForm currentState dataSets
+      Just _ -> stopForm
   get "/" $ do
     currentState <- UnliftIO.readIORef currentLoopState
+    currentTime <- liftIO getCurrentTime
     tz <- liftIO getCurrentTimeZone
     html $
       renderText $
         htmlSkeleton $ do
-          L.h2_ $ L.toHtml $ "selected beamtime: " <> Api.jsonBeamtimeTitle beamtimeMetadata
+          L.h2_ $ L.toHtml $ Api.jsonBeamtimeTitle beamtimeMetadata
           case currentState of
             Nothing -> startForm currentState dataSets
-            Just _ -> stopForm
+            Just _ -> L.div_ [LX.hxGet_ "/form-state", LX.hxTrigger_ "every 1s"] stopForm
           L.hr_ []
-          L.div_ [LX.hxTrigger_ "every 1s", LX.hxGet_ "/current-state"] $ do
-            currentStateHtml tz currentState
+          L.div_ [LX.hxTrigger_ "every 10s", LX.hxGet_ "/current-state"] $ do
+            currentStateHtml currentTime tz currentState
 
 main :: IO ()
 main = do

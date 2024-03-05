@@ -1,7 +1,15 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module TangoHL (withDeviceProxy, checkResult, readStringAttribute, writeIntAttribute, commandInOutVoid) where
+module TangoHL
+  ( withDeviceProxy,
+    checkResult,
+    readStringAttribute,
+    writeIntAttribute,
+    commandInOutVoid,
+    readIntAttribute,
+  )
+where
 
 import Control.Applicative (pure)
 import Control.Exception (Exception, bracket, throw)
@@ -34,7 +42,7 @@ import Tango
     HaskellDataQuality (..),
     HaskellDevFailed (HaskellDevFailed),
     HaskellErrorStack (errorStackLength, errorStackSequence),
-    HaskellTangoAttributeData (HaskellAttributeDataLongArray, HaskellAttributeDataStringArray),
+    HaskellTangoAttributeData (HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStringArray),
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
     HaskellTangoDevState,
@@ -112,6 +120,22 @@ readStringAttribute proxyPtr attributeNameHaskell =
           result <- pack <$> peekCString firstString
           tango_free_AttributeData haskellAttributeDataPtr
           pure result
+        _ -> do
+          tango_free_AttributeData haskellAttributeDataPtr
+          error "invalid type of attribute, not a string"
+
+readIntAttribute :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> m Int
+readIntAttribute proxyPtr attributeNameHaskell =
+  -- FIXME: This is 99% the same as readStringAttribute!
+  liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
+    alloca $ \haskellAttributeDataPtr -> do
+      checkResult (tango_read_attribute proxyPtr attributeName haskellAttributeDataPtr)
+      haskellAttributeData <- peek haskellAttributeDataPtr
+      case tangoAttributeData haskellAttributeData of
+        HaskellAttributeDataLong64Array (HaskellTangoVarArray {varArrayValues}) -> do
+          firstLong <- peek varArrayValues
+          tango_free_AttributeData haskellAttributeDataPtr
+          pure (fromIntegral firstLong)
         _ -> do
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not a string"

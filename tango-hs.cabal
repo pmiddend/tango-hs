@@ -209,6 +209,8 @@ executable chef
                      , lucid-htmx
                      , unliftio
                      , containers
+                     , Chart
+                     , Chart-diagrams
                      -- from here on: copied
                      , text
                      , ghc-prim
