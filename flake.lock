@@ -35,11 +35,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1670064435,
-        "narHash": "sha256-+ELoY30UN+Pl3Yn7RWRPabykwebsVK/kYE9JsIsUMxQ=",
+        "lastModified": 1708475490,
+        "narHash": "sha256-g1v0TsWBQPX97ziznfJdWhgMyMGtoBFs102xSYO4syU=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "61a8a98e6d557e6dd7ed0cdb54c3a3e3bbc5e25c",
+        "rev": "0e74ca98a74bc7270d28838369593635a5db3260",
         "type": "github"
       },
       "original": {
@@ -76,17 +76,16 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1708601711,
-        "narHash": "sha256-PdJ/QOMxt5xwetq1Y9zSZZfbuvzvNcjQzEojkVK/UFU=",
-        "ref": "refs/heads/main",
-        "rev": "e90a13cbebd9b667cfe6eb49b52d3c8401bec1f3",
-        "revCount": 8,
+        "dirtyRev": "ca2cdfb98f52401a849d02b876e72e0b052aa412-dirty",
+        "dirtyShortRev": "ca2cdfb-dirty",
+        "lastModified": 1710060115,
+        "narHash": "sha256-ZEJ1dEsarF4tBcHXKU2eFWgfXqk1RHnBR+GNpJnjRD4=",
         "type": "git",
-        "url": "https://gitlab.desy.de/cfel-sc-public/tango-flake"
+        "url": "file:///home/pmidden/code/tango-flake"
       },
       "original": {
         "type": "git",
-        "url": "https://gitlab.desy.de/cfel-sc-public/tango-flake"
+        "url": "file:///home/pmidden/code/tango-flake"
       }
     }
   },

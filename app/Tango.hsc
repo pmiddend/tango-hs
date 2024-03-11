@@ -14,6 +14,7 @@ module Tango(tango_create_device_proxy,
              tango_command_inout,
              tango_free_AttributeData,
              tango_free_CommandData,
+             tango_start_server,
              tango_set_timeout_millis,
              tango_create_database_proxy,
              tango_delete_database_proxy,
@@ -925,3 +926,5 @@ foreign import ccall unsafe "c_tango.h tango_free_DbDatum"
 foreign import ccall unsafe "c_tango.h tango_free_DbData"
      tango_free_DbData :: Ptr HaskellDbData -> IO ()
 
+foreign import ccall unsafe "c_tango.h tango_start_server"
+     tango_start_server :: CInt -> Ptr CString -> IO ()

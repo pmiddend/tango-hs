@@ -15,6 +15,7 @@ add_library(ctango SHARED
   src/c_tango_attribute.cpp
   src/c_tango_command.cpp
   src/c_tango_dbase.cpp
+  src/c_tango_server.cpp
   src/c_tango_proxy.cpp
 )
 target_include_directories(ctango PUBLIC src ${TANGO_INCLUDE_DIRS})

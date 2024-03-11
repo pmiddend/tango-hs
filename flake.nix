@@ -8,8 +8,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
-    tango-controls.url = "git+https://gitlab.desy.de/cfel-sc-public/tango-flake";
-    # tango-controls.url = "/home/pmidden/code/tango-flake";
+    # tango-controls.url = "git+https://gitlab.desy.de/cfel-sc-public/tango-flake";
+    tango-controls.url = "/home/pmidden/code/tango-flake";
   };
 
   outputs = { self, nixpkgs, flake-utils, tango-controls }:
@@ -18,7 +18,7 @@
         let
           pkgs = import nixpkgs {
             inherit system;
-            overlays = [ tango-controls.overlay ];
+            overlays = [ tango-controls.overlays.default ];
           };
 
           haskellPackages = pkgs.haskellPackages.override {
@@ -46,7 +46,7 @@
 
             nativeBuildInputs = with pkgs; [ cmake pkg-config ];
             buildInputs = with pkgs; [
-              tango-controls-9_4
+              tango-cpptango
               zeromq
               cppzmq
               omniorb_4_2
@@ -68,7 +68,7 @@
                 haskellPackages.apply-refact
 
                 # Needed for pkg-config tango
-                tango-controls-9_4
+                tango-cpptango
                 pkg-config
                 zeromq
                 cppzmq

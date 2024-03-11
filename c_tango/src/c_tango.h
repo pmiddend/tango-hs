@@ -425,7 +425,13 @@ ErrorStack *tango_delete_device_property(void *dev_proxy, DbData *prop_list);
 void tango_free_DbDatum(DbDatum *db_datum);
 void tango_free_DbData(DbData *db_data);
 
-void start_server();
+  typedef struct {
+    char const * server_name;
+  } ServerDefinition;
+
+  void tango_add_device_server_definition(ServerDefinition *);
+
+  int tango_start_server(int argc, char *argv[]);
 
 #ifdef __cplusplus
 }      /* extern "C" */
