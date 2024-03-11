@@ -431,7 +431,10 @@ void tango_free_DbData(DbData *db_data);
 
   void tango_add_device_server_definition(ServerDefinition *);
 
-  int tango_start_server(int argc, char *argv[]);
+  void tango_set_attribute_getter(TangoDevLong64 (*)());
+  void tango_set_attribute_setter(void (*)(TangoDevLong64));
+  int tango_init_server(int argc, char *argv[]);
+  void tango_start_server();
 
 #ifdef __cplusplus
 }      /* extern "C" */

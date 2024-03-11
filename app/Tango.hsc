@@ -14,8 +14,13 @@ module Tango(tango_create_device_proxy,
              tango_command_inout,
              tango_free_AttributeData,
              tango_free_CommandData,
+             createGetterWrapper,
+             createSetterWrapper,
              tango_start_server,
+             tango_init_server,
              tango_set_timeout_millis,
+             tango_set_attribute_getter,
+             tango_set_attribute_setter,
              tango_create_database_proxy,
              tango_delete_database_proxy,
              tango_get_property,
@@ -73,10 +78,10 @@ import Foreign(Storable(peek, poke, alignment, sizeOf), pokeByteOff, peekByteOff
 import Foreign.C.String(peekCString, CString)
 import Foreign.Storable.Generic(GStorable)
 import GHC.Generics(Generic)
-import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong, CChar, CInt(CInt), CShort, CUInt, CUShort, CFloat)
+import Foreign.C.Types(CULong, CBool, CDouble, CInt, CLong(CLong), CChar, CInt(CInt), CShort, CUInt, CUShort, CFloat)
 import Data.Word(Word32, Word8, Word64, Word16)
 import Data.Int(Int32)
-import Foreign.Ptr(Ptr, castPtr)
+import Foreign.Ptr(Ptr, castPtr, FunPtr)
 import Data.List(find)
 
 #include <c_tango.h>
@@ -812,119 +817,133 @@ instance GStorable HaskellAttributeDataList
 type DeviceProxyPtr = Ptr ()
 type TangoError = Ptr HaskellErrorStack
 
-foreign import ccall unsafe "c_tango.h tango_create_device_proxy"
+foreign import ccall "c_tango.h tango_create_device_proxy"
      tango_create_device_proxy :: CString -> Ptr DeviceProxyPtr -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_delete_device_proxy"
+foreign import ccall "c_tango.h tango_delete_device_proxy"
      tango_delete_device_proxy :: DeviceProxyPtr -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_read_attribute"
+foreign import ccall "c_tango.h tango_read_attribute"
      tango_read_attribute :: DeviceProxyPtr -> CString -> Ptr HaskellAttributeData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_write_attribute"
+foreign import ccall "c_tango.h tango_write_attribute"
      tango_write_attribute :: DeviceProxyPtr -> Ptr HaskellAttributeData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_command_inout"
+foreign import ccall "c_tango.h tango_command_inout"
      tango_command_inout :: DeviceProxyPtr -> CString -> Ptr HaskellCommandData -> Ptr HaskellCommandData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_free_AttributeData"
+foreign import ccall "c_tango.h tango_free_AttributeData"
      tango_free_AttributeData :: Ptr HaskellAttributeData -> IO ()
 
-foreign import ccall unsafe "c_tango.h tango_free_CommandData"
+foreign import ccall "c_tango.h tango_free_CommandData"
      tango_free_CommandData :: Ptr HaskellCommandData -> IO ()
 
-foreign import ccall unsafe "c_tango.h tango_free_VarStringArray"
+foreign import ccall "c_tango.h tango_free_VarStringArray"
      tango_free_VarStringArray :: Ptr (HaskellTangoVarArray CString) -> IO ()
 
-foreign import ccall unsafe "c_tango.h tango_set_timeout_millis"
+foreign import ccall "c_tango.h tango_set_timeout_millis"
      tango_set_timeout_millis :: DeviceProxyPtr -> CInt -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_timeout_millis"
+foreign import ccall "c_tango.h tango_get_timeout_millis"
      tango_get_timeout_millis :: DeviceProxyPtr -> Ptr CInt -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_set_source"
+foreign import ccall "c_tango.h tango_set_source"
      tango_set_source :: DeviceProxyPtr -> CInt -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_source"
+foreign import ccall "c_tango.h tango_get_source"
      tango_get_source :: DeviceProxyPtr -> Ptr CInt -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_lock"
+foreign import ccall "c_tango.h tango_lock"
      tango_lock :: DeviceProxyPtr -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_unlock"
+foreign import ccall "c_tango.h tango_unlock"
      tango_unlock :: DeviceProxyPtr -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_is_locked"
+foreign import ccall "c_tango.h tango_is_locked"
      tango_is_locked :: DeviceProxyPtr -> Ptr Bool -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_is_locked_by_me"
+foreign import ccall "c_tango.h tango_is_locked_by_me"
      tango_is_locked_by_me :: DeviceProxyPtr -> Ptr Bool -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_locking_status"
+foreign import ccall "c_tango.h tango_locking_status"
      tango_locking_status :: DeviceProxyPtr -> Ptr CString -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_command_list_query"
+foreign import ccall "c_tango.h tango_command_list_query"
      tango_command_list_query :: DeviceProxyPtr -> Ptr HaskellCommandInfoList -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_command_query"
+foreign import ccall "c_tango.h tango_command_query"
      tango_command_query :: DeviceProxyPtr -> CString -> Ptr HaskellCommandInfo -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_free_CommandInfoList"
+foreign import ccall "c_tango.h tango_free_CommandInfoList"
      tango_free_CommandInfoList :: Ptr HaskellCommandInfoList -> IO ()
 
-foreign import ccall unsafe "c_tango.h tango_get_attribute_list"
+foreign import ccall "c_tango.h tango_get_attribute_list"
      tango_get_attribute_list :: DeviceProxyPtr -> Ptr (HaskellTangoVarArray CString) -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_attribute_config"
+foreign import ccall "c_tango.h tango_get_attribute_config"
      tango_get_attribute_config :: DeviceProxyPtr -> Ptr (HaskellTangoVarArray CString) -> Ptr HaskellAttributeInfoList -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_read_attributes"
+foreign import ccall "c_tango.h tango_read_attributes"
      tango_read_attributes :: DeviceProxyPtr -> Ptr (HaskellTangoVarArray CString) -> Ptr HaskellAttributeDataList -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_write_attributes"
+foreign import ccall "c_tango.h tango_write_attributes"
      tango_write_attributes :: DeviceProxyPtr -> Ptr HaskellAttributeDataList -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_create_database_proxy"
+foreign import ccall "c_tango.h tango_create_database_proxy"
      tango_create_database_proxy :: Ptr DeviceProxyPtr -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_delete_database_proxy"
+foreign import ccall "c_tango.h tango_delete_database_proxy"
      tango_delete_database_proxy :: DeviceProxyPtr -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_device_exported"
+foreign import ccall "c_tango.h tango_get_device_exported"
      tango_get_device_exported :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_device_exported_for_class"
+foreign import ccall "c_tango.h tango_get_device_exported_for_class"
      tango_get_device_exported_for_class :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_object_list"
+foreign import ccall "c_tango.h tango_get_object_list"
      tango_get_object_list :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_object_property_list"
+foreign import ccall "c_tango.h tango_get_object_property_list"
      tango_get_object_property_list :: DeviceProxyPtr -> CString -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_property"
+foreign import ccall "c_tango.h tango_get_property"
      tango_get_property :: DeviceProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_put_property"
+foreign import ccall "c_tango.h tango_put_property"
      tango_put_property :: DeviceProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_delete_property"
+foreign import ccall "c_tango.h tango_delete_property"
      tango_delete_property :: DeviceProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_get_device_property"
+foreign import ccall "c_tango.h tango_get_device_property"
      tango_get_device_property :: DeviceProxyPtr -> Ptr HaskellDbData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_put_device_property"
+foreign import ccall "c_tango.h tango_put_device_property"
      tango_put_device_property :: DeviceProxyPtr -> Ptr HaskellDbData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_delete_device_property"
+foreign import ccall "c_tango.h tango_delete_device_property"
      tango_delete_device_property :: DeviceProxyPtr -> Ptr HaskellDbData -> IO TangoError
 
-foreign import ccall unsafe "c_tango.h tango_free_DbDatum"
+foreign import ccall "c_tango.h tango_free_DbDatum"
      tango_free_DbDatum :: Ptr HaskellDbDatum -> IO ()
 
-foreign import ccall unsafe "c_tango.h tango_free_DbData"
+foreign import ccall "c_tango.h tango_free_DbData"
      tango_free_DbData :: Ptr HaskellDbData -> IO ()
 
-foreign import ccall unsafe "c_tango.h tango_start_server"
-     tango_start_server :: CInt -> Ptr CString -> IO ()
+foreign import ccall "c_tango.h tango_init_server"
+     tango_init_server :: CInt -> Ptr CString -> IO ()
+
+foreign import ccall "c_tango.h tango_start_server"
+     tango_start_server :: IO ()
+
+type TangoDevLong64 = CLong
+
+foreign import ccall "c_tango.h tango_set_attribute_getter"
+     tango_set_attribute_getter :: FunPtr (IO TangoDevLong64) -> IO ()
+
+foreign import ccall "c_tango.h tango_set_attribute_setter"
+     tango_set_attribute_setter :: FunPtr (TangoDevLong64 -> IO ()) -> IO ()
+
+foreign import ccall "wrapper" createGetterWrapper :: (IO TangoDevLong64) -> IO (FunPtr (IO TangoDevLong64))
+foreign import ccall "wrapper" createSetterWrapper :: (TangoDevLong64 -> IO ()) -> IO (FunPtr (TangoDevLong64 -> IO ()))

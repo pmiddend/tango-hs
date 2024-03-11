@@ -10,6 +10,11 @@ namespace {
   class JustOneAttributeClass : public Tango::DeviceClass {
   public:
     static JustOneAttributeClass *init(const char *);
+    static JustOneAttributeClass *instance();
+    void set_attribute_getter(Tango::DevLong64 (*ptr)());
+    void set_attribute_setter(void (*ptr)(Tango::DevLong64));
+    Tango::DevLong64 (*attribute_getter)();
+    void (*attribute_setter)(Tango::DevLong64);
   protected:
     JustOneAttributeClass(std::string &);
     void command_factory();
@@ -27,9 +32,9 @@ namespace {
   public:
     Tango::DevLong64	*attr_philipp_read;
 
-    JustOneAttribute(Tango::DeviceClass *cl,std::string &s);
+    // JustOneAttribute(Tango::DeviceClass *cl,std::string &s);
     JustOneAttribute(Tango::DeviceClass *cl,const char *s);
-    JustOneAttribute(Tango::DeviceClass *cl,const char *s,const char *d);
+    // JustOneAttribute(Tango::DeviceClass *cl,const char *s,const char *d);
     ~JustOneAttribute();
     
     void delete_device();
@@ -45,7 +50,11 @@ namespace {
 
     void add_dynamic_attributes();
     void add_dynamic_commands();
-    
+
+  private:
+    JustOneAttributeClass &parent_class;
+    // Tango::DevLong64 (*attribute_getter)();
+
   };
   
   class philippAttrib: public Tango::Attr
@@ -64,6 +73,16 @@ namespace {
 
   JustOneAttributeClass *JustOneAttributeClass::_instance = NULL;
 
+  JustOneAttributeClass *JustOneAttributeClass::instance()
+  {
+    if (_instance == NULL)
+      {
+	std::cerr << "Class is not initialised !!" << std::endl;
+	exit(-1);
+      }
+    return _instance;
+  }
+
   JustOneAttributeClass *JustOneAttributeClass::init(const char *name)
   {
     if (_instance == NULL)
@@ -81,6 +100,16 @@ namespace {
     return _instance;
   }
 
+  void JustOneAttributeClass::set_attribute_getter(Tango::DevLong64 (*ptr)())
+  {
+    this->attribute_getter = ptr;
+  }
+  
+  void JustOneAttributeClass::set_attribute_setter(void (*ptr)(Tango::DevLong64))
+  {
+    this->attribute_setter = ptr;
+  }
+  
   JustOneAttributeClass::JustOneAttributeClass(std::string &s):Tango::DeviceClass(s)
   {
     TANGO_LOG_INFO << "Entering JustOneAttributeClass constructor" << std::endl;
@@ -162,23 +191,23 @@ namespace {
   }
 
   
-  JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, std::string &s)
-    : TANGO_BASE_CLASS(cl, s.c_str())
-  {
-    init_device();
-  }
+  // JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, std::string &s)
+  //   : TANGO_BASE_CLASS(cl, s.c_str())
+  // {
+  //   init_device();
+  // }
 
   JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s)
-    : TANGO_BASE_CLASS(cl, s)
+    : TANGO_BASE_CLASS(cl, s), parent_class(static_cast<JustOneAttributeClass &>(*cl))
   {
     init_device();
   }
-  //--------------------------------------------------------
-  JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s, const char *d)
-    : TANGO_BASE_CLASS(cl, s, d)
-  {
-    init_device();
-  }
+  // //--------------------------------------------------------
+  // JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s, const char *d)
+  //   : TANGO_BASE_CLASS(cl, s, d)
+  // {
+  //   init_device();
+  // }
   //--------------------------------------------------------
   JustOneAttribute::~JustOneAttribute()
   {
@@ -214,7 +243,9 @@ namespace {
   void JustOneAttribute::read_philipp(Tango::Attribute &attr)
   {
     DEBUG_STREAM << "JustOneAttribute::read_philipp(Tango::Attribute &attr) entering... " << std::endl;
-    this->attr_philipp_read[0] = 1337;
+    std::cout << "calling attribute getter" << std::endl;
+    this->attr_philipp_read[0] = this->parent_class.attribute_getter();
+    std::cout << "calling attribute getter done" << std::endl;
     attr.set_value(attr_philipp_read);
   }
 
@@ -232,6 +263,7 @@ namespace {
     DEBUG_STREAM << "JustOneAttribute::write_philipp(Tango::WAttribute &attr) entering... " << std::endl;
     Tango::DevLong64	w_val;
     attr.get_write_value(w_val);
+    this->parent_class.attribute_setter(w_val);
   }
 
   void JustOneAttribute::add_dynamic_attributes()
@@ -262,7 +294,7 @@ void tango_add_device_server_definition(ServerDefinition *definition) {
   definitions.push_back(cpp_def);
 }
 
-int tango_start_server(int argc, char *argv[]) {
+int tango_init_server(int argc, char *argv[]) {
   Tango::Util *tg;
   try
     {
@@ -275,6 +307,31 @@ int tango_start_server(int argc, char *argv[]) {
       //----------------------------------------
       tg->server_init(false);
 
+      std::cout << "Server initialized" << std::endl;
+    }
+  catch (std::bad_alloc &)
+    {
+      std::cout << "Can't allocate memory to store device object !!!" << std::endl;
+      std::cout << "Exiting" << std::endl;
+    }
+  catch (CORBA::Exception &e)
+    {
+      Tango::Except::print_exception(e);
+
+      std::cout << "Received a CORBA_Exception" << std::endl;
+      std::cout << "Exiting" << std::endl;
+    }
+
+  return(0);
+
+}
+
+void tango_start_server() {
+  Tango::Util *tg = Tango::Util::instance();
+  if (!tg)
+    return;
+  try
+    {
       // Run the endless loop
       //----------------------------------------
       std::cout << "Ready to accept request" << std::endl;
@@ -297,8 +354,12 @@ int tango_start_server(int argc, char *argv[]) {
     {
       tg->server_cleanup();
     }
-  return(0);
-
 }
 
+void tango_set_attribute_getter(TangoDevLong64 (*ptr)()) {
+  JustOneAttributeClass::instance()->set_attribute_getter(ptr);
+}
 
+void tango_set_attribute_setter(void (*ptr)(TangoDevLong64)) {
+  JustOneAttributeClass::instance()->set_attribute_setter(ptr);
+}
