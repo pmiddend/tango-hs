@@ -16,7 +16,7 @@ import Data.Foldable (find, for_)
 import Data.IORef (IORef, newIORef)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Ratio ((%))
 import Data.String (IsString)
 import Data.Text (Text, intercalate, pack, unpack)
@@ -185,28 +185,44 @@ data CollectionLoopState = CollectionLoopState
   }
   deriving (Show)
 
-type LoopStateRef = IORef (Maybe CollectionLoopState)
+newtype CollectionLoops = CollectionLoops
+  { collectionLoopLoops :: [CollectionLoopState]
+  }
+  deriving (Show)
 
-logInfo :: (MonadLog m, MonadIO m) => IORef (Maybe CollectionLoopState) -> Text -> m ()
+type LoopStateRef = IORef CollectionLoops
+
+modifyHead :: (a -> a) -> [a] -> [a]
+modifyHead f (x : xs) = f x : xs
+modifyHead _ xs = xs
+
+modifyCurrentLoop :: MonadIO m => LoopStateRef -> (CollectionLoopState -> CollectionLoopState) -> m ()
+modifyCurrentLoop r f = atomicModifyIORefVoid r (\old -> old {collectionLoopLoops = modifyHead f (collectionLoopLoops old)})
+
+logInfo :: (MonadLog m, MonadIO m) => IORef CollectionLoops -> Text -> m ()
 logInfo loopStateRef message = do
   logInfo_ message
   currentTime <- liftIO getCurrentTime
-  atomicModifyIORefVoid
+  modifyCurrentLoop
     loopStateRef
-    (\old -> (\state -> state {loopStateLog = LogMessage currentTime message : loopStateLog state}) <$> old)
+    (\state -> state {loopStateLog = LogMessage currentTime message : loopStateLog state})
 
 collectionLoop :: CliOptions -> CollectionConfig -> LoopStateRef -> IO ()
 collectionLoop cliOptions collectionConfig loopStateRef = withStdOutLogger $ \logger -> do
-  atomicWriteIORefVoid
+  atomicModifyIORefVoid
     loopStateRef
-    ( Just
-        ( CollectionLoopState
-            { loopStateIndexedFrameHistory = [],
-              loopStateRunIds = [],
-              loopStateCollectionConfig = collectionConfig,
-              loopStateLog = []
-            }
-        )
+    ( \old ->
+        old
+          { collectionLoopLoops =
+              ( CollectionLoopState
+                  { loopStateIndexedFrameHistory = [],
+                    loopStateRunIds = [],
+                    loopStateCollectionConfig = collectionConfig,
+                    loopStateLog = []
+                  }
+              )
+                : collectionLoopLoops old
+          }
     )
   runLogT
     "main"
@@ -218,18 +234,13 @@ collectionLoop cliOptions collectionConfig loopStateRef = withStdOutLogger $ \lo
         (cliP11RunnerIdentifier cliOptions)
         (withRunner cliOptions collectionConfig loopStateRef)
 
-appendIndexedFrames :: (MonadIO m) => IORef (Maybe CollectionLoopState) -> IndexedFrames -> m ()
-appendIndexedFrames loopStateRef indF =
-  atomicModifyIORefVoid
-    loopStateRef
-    (\maybeCurrentState -> (\currentState -> currentState {loopStateIndexedFrameHistory = indF : loopStateIndexedFrameHistory currentState}) <$> maybeCurrentState)
+appendIndexedFrames :: (MonadIO m) => LoopStateRef -> IndexedFrames -> m ()
+appendIndexedFrames loopStateRef indF = modifyCurrentLoop loopStateRef \currentState -> currentState {loopStateIndexedFrameHistory = indF : loopStateIndexedFrameHistory currentState}
 
-appendRunId :: (MonadIO m) => IORef (Maybe CollectionLoopState) -> Int -> m ()
+appendRunId :: (MonadIO m) => LoopStateRef -> Int -> m ()
 appendRunId loopStateRef newRunId = do
   currentTime <- liftIO getCurrentTime
-  atomicModifyIORefVoid
-    loopStateRef
-    (\maybeCurrentState -> (\currentState -> currentState {loopStateRunIds = (currentTime, newRunId) : loopStateRunIds currentState}) <$> maybeCurrentState)
+  modifyCurrentLoop loopStateRef \currentState -> currentState {loopStateRunIds = (currentTime, newRunId) : loopStateRunIds currentState}
 
 collectionLoop' ::
   (UnliftIO.MonadUnliftIO m, MonadLog m) =>
@@ -344,8 +355,8 @@ formatIntHumanFriendly = packShow
 formatFloatHumanFriendly :: Double -> Text
 formatFloatHumanFriendly = pack . printf "%.2f"
 
-currentStateHtml :: UTCTime -> TimeZone -> Maybe CollectionLoopState -> L.HtmlT Identity ()
-currentStateHtml currentTime tz currentState =
+currentStateHtml :: UTCTime -> TimeZone -> Maybe CollectionLoopState -> Maybe ThreadId -> L.HtmlT Identity ()
+currentStateHtml currentTime tz currentState currentThread =
   case currentState of
     Nothing -> L.div_ [L.class_ "form-text"] (L.p_ "Please select a data set and start collecting!")
     Just
@@ -374,7 +385,9 @@ currentStateHtml currentTime tz currentState =
                 L.dt_ "Indexed FPS Low Watermark"
                 L.dd_ (L.toHtml (formatFloatHumanFriendly indexedFpsLowWatermark))
               L.h3_ "Stats"
-              stopForm
+              case currentThread of
+                Nothing -> L.div_ [L.class_ "alert alert-primary"] "Finished!"
+                Just _threadId -> stopForm
               L.p_ do
                 case currentState >>= NE.nonEmpty . take runningWindowSize . loopStateIndexedFrameHistory >>= calculateIndexedFps of
                   Nothing -> mempty
@@ -542,10 +555,13 @@ startForm currentState dataSets =
               L.label_ [L.for_ framesPerRunParam] "Frames per Run"
         L.button_ [L.type_ "submit", L.class_ "btn btn-primary"] "Start collection"
 
-runServer :: CliOptions -> IORef (Maybe CollectionLoopState) -> IORef (Maybe ThreadId) -> Api.JsonBeamtime -> Api.JsonReadDataSets -> IO ()
+readCurrentLoop :: MonadIO m => LoopStateRef -> m (Maybe CollectionLoopState)
+readCurrentLoop loopStateRef = listToMaybe . collectionLoopLoops <$> UnliftIO.readIORef loopStateRef
+
+runServer :: CliOptions -> LoopStateRef -> IORef (Maybe ThreadId) -> Api.JsonBeamtime -> Api.JsonReadDataSets -> IO ()
 runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = scotty (cliWebPort cliOptions) $ do
   get "/chart" $ do
-    currentState <- UnliftIO.readIORef currentLoopState
+    currentState <- readCurrentLoop currentLoopState
     case currentState of
       Nothing -> text ""
       Just (CollectionLoopState {loopStateIndexedFrameHistory = frameHistory, loopStateRunIds = runIds}) ->
@@ -578,10 +594,11 @@ runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = 
     liftIO $ TangoHL.withDeviceProxy (cliP11RunnerIdentifier cliOptions) $ \runner -> TangoHL.commandInOutVoid runner "stop_run"
     currentThreadId <- UnliftIO.readIORef currentThread
     liftIO $ for_ currentThreadId killThread
-    currentState <- UnliftIO.readIORef currentLoopState
+    currentState <- readCurrentLoop currentLoopState
     currentTime <- liftIO getCurrentTime
     tz <- liftIO getCurrentTimeZone
-    html $ renderText $ currentStateHtml currentTime tz currentState
+    currentThread' <- UnliftIO.readIORef currentThread
+    html $ renderText $ currentStateHtml currentTime tz currentState currentThread'
   post "/start" $ do
     collectionConfig <-
       CollectionConfig
@@ -590,34 +607,34 @@ runServer cliOptions currentLoopState currentThread beamtimeMetadata dataSets = 
         <*> param framesPerRunParam
         <*> param dataSetIdParam
     -- FIXME: use an mvar to synchronize thread creation
-    let doneHandler _eitherExceptionOrValue = do
-          atomicWriteIORefVoid currentLoopState Nothing
-          atomicWriteIORefVoid currentThread Nothing
+    let doneHandler _eitherExceptionOrValue = atomicWriteIORefVoid currentThread Nothing
     newThreadId <- liftIO $ forkFinally (collectionLoop cliOptions collectionConfig currentLoopState) doneHandler
     atomicWriteIORefVoid currentThread (Just newThreadId)
-    currentState <- UnliftIO.readIORef currentLoopState
+    currentState <- readCurrentLoop currentLoopState
     html $ renderText $ startForm currentState dataSets
   get "/current-state" $ do
-    currentState <- UnliftIO.readIORef currentLoopState
     tz <- liftIO getCurrentTimeZone
     currentTime <- liftIO getCurrentTime
-    html $ renderText $ currentStateHtml currentTime tz currentState
+    currentState <- readCurrentLoop currentLoopState
+    currentThread' <- UnliftIO.readIORef currentThread
+    html $ renderText $ currentStateHtml currentTime tz currentState currentThread'
   get "/form-state" $ do
-    currentState <- UnliftIO.readIORef currentLoopState
+    currentState <- readCurrentLoop currentLoopState
     html $ renderText $ case currentState of
       Nothing -> startForm currentState dataSets
       Just _ -> stopForm
   get "/" $ do
-    currentState <- UnliftIO.readIORef currentLoopState
+    currentState <- readCurrentLoop currentLoopState
     currentTime <- liftIO getCurrentTime
     tz <- liftIO getCurrentTimeZone
+    currentThread' <- UnliftIO.readIORef currentThread
     html $
       renderText $
         htmlSkeleton $ do
           L.h2_ $ L.toHtml $ Api.jsonBeamtimeTitle beamtimeMetadata
           startForm currentState dataSets
           L.hr_ []
-          L.div_ [LX.hxTrigger_ "every 10s", LX.hxGet_ "/current-state"] $ currentStateHtml currentTime tz currentState
+          L.div_ [LX.hxTrigger_ "every 10s", LX.hxGet_ "/current-state"] $ currentStateHtml currentTime tz currentState currentThread'
 
 main :: IO ()
 main = do
@@ -629,7 +646,7 @@ main = do
               <> Opt.header "chef - cook some crystal recipes!"
           )
   cliOptions <- Opt.execParser opts
-  currentLoopState <- newIORef Nothing
+  currentLoopState <- newIORef (CollectionLoops [])
   beamtimeMetadata' <-
     runAmarcordHttp
       (cliAmarcordUrl cliOptions)
