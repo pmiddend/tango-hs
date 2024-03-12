@@ -1,11 +1,15 @@
 #include "c_tango.h"
 
 namespace {
-  struct CppServerDefinition {
-    std::string server_name;
+  struct AttributeDefinitionCpp {
+    std::string name;
+    TangoDataType data_type;
+    AttrWriteType write_type;
+    void (*set_callback)(TangoDevLong64);
+    TangoDevLong64 (*get_callback)();
   };
 
-  std::vector<CppServerDefinition> definitions;
+  std::vector<AttributeDefinitionCpp> attribute_definitions;
 
   class JustOneAttributeClass : public Tango::DeviceClass {
   public:
@@ -30,11 +34,9 @@ namespace {
   class JustOneAttribute : public TANGO_BASE_CLASS
   {
   public:
-    Tango::DevLong64	*attr_philipp_read;
+    // Tango::DevLong64	*attr_philipp_read;
 
-    // JustOneAttribute(Tango::DeviceClass *cl,std::string &s);
     JustOneAttribute(Tango::DeviceClass *cl,const char *s);
-    // JustOneAttribute(Tango::DeviceClass *cl,const char *s,const char *d);
     ~JustOneAttribute();
     
     void delete_device();
@@ -44,9 +46,9 @@ namespace {
     virtual void read_attr_hardware(std::vector<long> &attr_list);
     virtual void write_attr_hardware(std::vector<long> &attr_list);
 
-    virtual void read_philipp(Tango::Attribute &attr);
-    virtual void write_philipp(Tango::WAttribute &attr);
-    virtual bool is_philipp_allowed(Tango::AttReqType type);
+    // virtual void read_philipp(Tango::Attribute &attr);
+    // virtual void write_philipp(Tango::WAttribute &attr);
+    // virtual bool is_philipp_allowed(Tango::AttReqType type);
 
     void add_dynamic_attributes();
     void add_dynamic_commands();
@@ -57,19 +59,54 @@ namespace {
 
   };
   
-  class philippAttrib: public Tango::Attr
+  class haskellAttrib: public Tango::Attr
   {
   public:
-    philippAttrib():Attr("philipp",
-			 Tango::DEV_LONG64, Tango::READ_WRITE) {};
-    ~philippAttrib() {};
+    haskellAttrib(
+		  AttributeDefinitionCpp const &def)
+      : Attr(def.name.c_str(), static_cast<long>(def.data_type), Tango::OPERATOR, static_cast<Tango::AttrWriteType>(def.write_type)), def{def}
+    {}
+    
+    ~haskellAttrib() {}
+    
     virtual void read(Tango::DeviceImpl *dev,Tango::Attribute &att)
-    {(static_cast<JustOneAttribute *>(dev))->read_philipp(att);}
+    {
+      TangoDevLong64 int_value = def.get_callback();
+      std::cout << "get callback\n";
+      // Takes a pointer (to support arrays and such)
+      att.set_value(&int_value);
+      std::cout << "get callback done\n";
+    }
+    
     virtual void write(Tango::DeviceImpl *dev,Tango::WAttribute &att)
-    {(static_cast<JustOneAttribute *>(dev))->write_philipp(att);}
-    virtual bool is_allowed(Tango::DeviceImpl *dev,Tango::AttReqType ty)
-    {return (static_cast<JustOneAttribute *>(dev))->is_philipp_allowed(ty);}
+    {
+      Tango::DevLong64	w_val;
+      att.get_write_value(w_val);
+      std::cout << "set callback " << w_val << "\n";
+      def.set_callback(w_val);
+      std::cout << "set callback " << w_val << " done\n";
+    }
+    
+    virtual bool is_allowed(Tango::DeviceImpl *dev,Tango::AttReqType ty) {
+      return true;
+    }
+  private:
+    AttributeDefinitionCpp const &def;
   };
+  
+  // class philippAttrib: public Tango::Attr
+  // {
+  // public:
+  //   philippAttrib():Attr("philipp",
+  // 			 Tango::DEV_LONG64, Tango::READ_WRITE) {};
+  //   ~philippAttrib() {};
+  //   virtual void read(Tango::DeviceImpl *dev,Tango::Attribute &att)
+  //   {(static_cast<JustOneAttribute *>(dev))->read_philipp(att);}
+  //   virtual void write(Tango::DeviceImpl *dev,Tango::WAttribute &att)
+  //   {(static_cast<JustOneAttribute *>(dev))->write_philipp(att);}
+  //   virtual bool is_allowed(Tango::DeviceImpl *dev,Tango::AttReqType ty)
+  //   {return (static_cast<JustOneAttribute *>(dev))->is_philipp_allowed(ty);}
+  // };
 
   JustOneAttributeClass *JustOneAttributeClass::_instance = NULL;
 
@@ -122,31 +159,37 @@ namespace {
 
   void JustOneAttributeClass::attribute_factory(std::vector<Tango::Attr *> &att_list)
   {
-    philippAttrib	*philipp = new philippAttrib();
-    Tango::UserDefaultAttrProp	philipp_prop;
-    //	description	not set for philipp
-    philipp_prop.set_label("mylabel");
-    philipp_prop.set_unit("myunit");
-    philipp_prop.set_standard_unit("mystandardunit");
-    philipp_prop.set_display_unit("mydisplayunit");
-    //	format	not set for philipp
-    //	max_value	not set for philipp
-    //	min_value	not set for philipp
-    //	max_alarm	not set for philipp
-    //	min_alarm	not set for philipp
-    //	max_warning	not set for philipp
-    //	min_warning	not set for philipp
-    //	delta_t	not set for philipp
-    //	delta_val	not set for philipp
-    philipp->set_default_properties(philipp_prop);
-    //	Not Polled
-    philipp->set_disp_level(Tango::OPERATOR);
-    //	Not Memorized
-    att_list.push_back(philipp);
+    for (AttributeDefinitionCpp const &attribute_definition : attribute_definitions) {
+      std::cout << "creating attribute " << attribute_definition.name << "\n";
+      haskellAttrib *new_attribute = new haskellAttrib(attribute_definition);
+      Tango::UserDefaultAttrProp	attribute_prop;
+      //	description	not set for philipp
+      // philipp_prop.set_label("mylabel");
+      // philipp_prop.set_unit("myunit");
+      // philipp_prop.set_standard_unit("mystandardunit");
+      // philipp_prop.set_display_unit("mydisplayunit");
+      //	format	not set for philipp
+      //	max_value	not set for philipp
+      //	min_value	not set for philipp
+      //	max_alarm	not set for philipp
+      //	min_alarm	not set for philipp
+      //	max_warning	not set for philipp
+      //	min_warning	not set for philipp
+      //	delta_t	not set for philipp
+      //	delta_val	not set for philipp
+      new_attribute->set_default_properties(attribute_prop);
+      //	Not Polled
+      new_attribute->set_disp_level(Tango::OPERATOR);
+      //	Not Memorized
+      att_list.push_back(new_attribute);
+      std::cout << "done creating attribute " << attribute_definition.name << "\n";
+    }
 
 
     //	Create a list of static attributes
+    std::cout << "creating static attribute list\n";
     create_static_attribute_list(get_class_attr()->get_attr_list());
+    std::cout << "creating static attribute list done\n";
   }
 
   void JustOneAttributeClass::device_factory(const Tango::DevVarStringArray *devlist_ptr)
@@ -217,13 +260,13 @@ namespace {
   void JustOneAttribute::delete_device()
   {
     DEBUG_STREAM << "JustOneAttribute::delete_device() " << device_name << std::endl;
-    delete[] attr_philipp_read;
+    // delete[] attr_philipp_read;
   }
 
   void JustOneAttribute::init_device()
   {
     DEBUG_STREAM << "JustOneAttribute::init_device() create device " << device_name << std::endl;
-    attr_philipp_read = new Tango::DevLong64[1];
+    // attr_philipp_read = new Tango::DevLong64[1];
   }  
 
   void JustOneAttribute::always_executed_hook()
@@ -240,14 +283,14 @@ namespace {
     DEBUG_STREAM << "JustOneAttribute::write_attr_hardware(std::vector<long> &attr_list) entering... " << std::endl;
   }
 
-  void JustOneAttribute::read_philipp(Tango::Attribute &attr)
-  {
-    DEBUG_STREAM << "JustOneAttribute::read_philipp(Tango::Attribute &attr) entering... " << std::endl;
-    std::cout << "calling attribute getter" << std::endl;
-    this->attr_philipp_read[0] = this->parent_class.attribute_getter();
-    std::cout << "calling attribute getter done" << std::endl;
-    attr.set_value(attr_philipp_read);
-  }
+  // void JustOneAttribute::read_philipp(Tango::Attribute &attr)
+  // {
+  //   DEBUG_STREAM << "JustOneAttribute::read_philipp(Tango::Attribute &attr) entering... " << std::endl;
+  //   std::cout << "calling attribute getter" << std::endl;
+  //   this->attr_philipp_read[0] = this->parent_class.attribute_getter();
+  //   std::cout << "calling attribute getter done" << std::endl;
+  //   attr.set_value(attr_philipp_read);
+  // }
 
   //--------------------------------------------------------
   /**
@@ -258,13 +301,13 @@ namespace {
    *	Attr type:	Scalar
    */
   //--------------------------------------------------------
-  void JustOneAttribute::write_philipp(Tango::WAttribute &attr)
-  {
-    DEBUG_STREAM << "JustOneAttribute::write_philipp(Tango::WAttribute &attr) entering... " << std::endl;
-    Tango::DevLong64	w_val;
-    attr.get_write_value(w_val);
-    this->parent_class.attribute_setter(w_val);
-  }
+  // void JustOneAttribute::write_philipp(Tango::WAttribute &attr)
+  // {
+  //   DEBUG_STREAM << "JustOneAttribute::write_philipp(Tango::WAttribute &attr) entering... " << std::endl;
+  //   Tango::DevLong64	w_val;
+  //   attr.get_write_value(w_val);
+  //   this->parent_class.attribute_setter(w_val);
+  // }
 
   void JustOneAttribute::add_dynamic_attributes()
   {
@@ -274,24 +317,27 @@ namespace {
   {
   }
   
-  bool JustOneAttribute::is_philipp_allowed(TANGO_UNUSED(Tango::AttReqType type))
-  {
-    return true;
-  }
+  // bool JustOneAttribute::is_philipp_allowed(TANGO_UNUSED(Tango::AttReqType type))
+  // {
+  //   return true;
+  // }
 }
 
 void Tango::DServer::class_factory()
 {
   add_class(JustOneAttributeClass::init("JustOneAttribute"));
-  for (auto const &definition : definitions) {
-    // add_class(JustOneAttributeClass::init(definition.server_name.c_str()));
-  }
 }
 
-void tango_add_device_server_definition(ServerDefinition *definition) {
-  CppServerDefinition cpp_def;
-  cpp_def.server_name = definition->server_name;
-  definitions.push_back(cpp_def);
+void tango_add_attribute_definition(AttributeDefinition *definition) {
+  attribute_definitions.push_back(
+				  AttributeDefinitionCpp{
+				    definition->attribute_name,
+				    definition->data_type,
+				    definition->write_type,
+				    definition->set_callback,
+				    definition->get_callback
+				  }
+				  );
 }
 
 int tango_init_server(int argc, char *argv[]) {
@@ -356,10 +402,10 @@ void tango_start_server() {
     }
 }
 
-void tango_set_attribute_getter(TangoDevLong64 (*ptr)()) {
-  JustOneAttributeClass::instance()->set_attribute_getter(ptr);
-}
+// void tango_set_attribute_getter(TangoDevLong64 (*ptr)()) {
+//   JustOneAttributeClass::instance()->set_attribute_getter(ptr);
+// }
 
-void tango_set_attribute_setter(void (*ptr)(TangoDevLong64)) {
-  JustOneAttributeClass::instance()->set_attribute_setter(ptr);
-}
+// void tango_set_attribute_setter(void (*ptr)(TangoDevLong64)) {
+//   JustOneAttributeClass::instance()->set_attribute_setter(ptr);
+// }

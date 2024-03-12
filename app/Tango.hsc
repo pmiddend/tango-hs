@@ -11,6 +11,8 @@ module Tango(tango_create_device_proxy,
              tango_read_attribute,
              tango_write_attribute,
              HaskellTangoDevState(..),
+             HaskellAttributeDefinition (..),
+             HaskellAttrWriteType(..),
              tango_command_inout,
              tango_free_AttributeData,
              tango_free_CommandData,
@@ -19,9 +21,8 @@ module Tango(tango_create_device_proxy,
              tango_start_server,
              tango_init_server,
              tango_set_timeout_millis,
-             tango_set_attribute_getter,
-             tango_set_attribute_setter,
              tango_create_database_proxy,
+             tango_add_attribute_definition,
              tango_delete_database_proxy,
              tango_get_property,
              tango_command_query,
@@ -939,11 +940,24 @@ foreign import ccall "c_tango.h tango_start_server"
 
 type TangoDevLong64 = CLong
 
-foreign import ccall "c_tango.h tango_set_attribute_getter"
-     tango_set_attribute_getter :: FunPtr (IO TangoDevLong64) -> IO ()
+-- foreign import ccall "c_tango.h tango_set_attribute_getter"
+--      tango_set_attribute_getter :: FunPtr (IO TangoDevLong64) -> IO ()
 
-foreign import ccall "c_tango.h tango_set_attribute_setter"
-     tango_set_attribute_setter :: FunPtr (TangoDevLong64 -> IO ()) -> IO ()
+-- foreign import ccall "c_tango.h tango_set_attribute_setter"
+--      tango_set_attribute_setter :: FunPtr (TangoDevLong64 -> IO ()) -> IO ()
 
 foreign import ccall "wrapper" createGetterWrapper :: (IO TangoDevLong64) -> IO (FunPtr (IO TangoDevLong64))
 foreign import ccall "wrapper" createSetterWrapper :: (TangoDevLong64 -> IO ()) -> IO (FunPtr (TangoDevLong64 -> IO ()))
+
+data HaskellAttributeDefinition = HaskellAttributeDefinition
+  { attribute_name :: !CString
+  , data_type :: !HaskellTangoDataType
+  , write_type :: HaskellAttrWriteType
+  , set_callback :: FunPtr (TangoDevLong64 -> IO ())
+  , get_callback :: FunPtr (IO TangoDevLong64)
+  } deriving(Show, Generic)
+
+instance GStorable HaskellAttributeDefinition
+
+foreign import ccall "c_tango.h tango_add_attribute_definition"
+     tango_add_attribute_definition :: Ptr HaskellAttributeDefinition -> IO ()

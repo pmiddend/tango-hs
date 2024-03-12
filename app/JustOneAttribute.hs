@@ -1,13 +1,17 @@
+{-# LANGUAGE BlockArguments #-}
+
 import Foreign.C (CLong)
 import Foreign.C.String (CString, newCString, peekCString, withCString)
 import Foreign.Marshal (free, peekArray, with)
 import Foreign.Marshal.Array (withArray)
 import Tango
-  ( createGetterWrapper,
+  ( HaskellAttrWriteType (ReadWrite),
+    HaskellAttributeDefinition (..),
+    HaskellTangoDataType (HaskellDevLong64),
+    createGetterWrapper,
     createSetterWrapper,
+    tango_add_attribute_definition,
     tango_init_server,
-    tango_set_attribute_getter,
-    tango_set_attribute_setter,
     tango_start_server,
   )
 
@@ -22,11 +26,14 @@ attributeSetter newValue = do
 
 main :: IO ()
 main = do
-  withCString "JustOneAttribute" $ \first -> withCString "testdevice" $ \second -> do
-    withArray [first, second] $ \a -> do
-      tango_init_server 2 a
-      getterWrapped <- createGetterWrapper attributeGetter
-      setterWrapped <- createSetterWrapper attributeSetter
-      tango_set_attribute_getter getterWrapped
-      tango_set_attribute_setter setterWrapped
-      tango_start_server
+  withCString "JustOneAttribute" \first -> withCString "testdevice" \second -> do
+    withArray [first, second] \a -> do
+      withCString "first_attribute" \firstAttributeName -> withCString "second_attribute" \secondAttributeName -> do
+        getterWrapped <- createGetterWrapper attributeGetter
+        setterWrapped <- createSetterWrapper attributeSetter
+        with (HaskellAttributeDefinition firstAttributeName HaskellDevLong64 ReadWrite setterWrapped getterWrapped) \attributeDefinition -> do
+          tango_add_attribute_definition attributeDefinition
+        with (HaskellAttributeDefinition secondAttributeName HaskellDevLong64 ReadWrite setterWrapped getterWrapped) \attributeDefinition -> do
+          tango_add_attribute_definition attributeDefinition
+        tango_init_server 2 a
+        tango_start_server
