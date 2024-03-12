@@ -429,14 +429,11 @@ void tango_free_DbData(DbData *db_data);
     char const * attribute_name;
     TangoDataType data_type;
     AttrWriteType write_type;
-    void (*set_callback)(TangoDevLong64);
-    TangoDevLong64 (*get_callback)();
+    void (*set_callback)(void *);
+    void (*get_callback)(void *);
   } AttributeDefinition;
 
   void tango_add_attribute_definition(AttributeDefinition *);
-
-  /* void tango_set_attribute_getter(TangoDevLong64 (*)()); */
-  /* void tango_set_attribute_setter(void (*)(TangoDevLong64)); */
   int tango_init_server(int argc, char *argv[]);
   void tango_start_server();
 

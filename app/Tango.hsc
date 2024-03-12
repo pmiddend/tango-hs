@@ -946,15 +946,15 @@ type TangoDevLong64 = CLong
 -- foreign import ccall "c_tango.h tango_set_attribute_setter"
 --      tango_set_attribute_setter :: FunPtr (TangoDevLong64 -> IO ()) -> IO ()
 
-foreign import ccall "wrapper" createGetterWrapper :: (IO TangoDevLong64) -> IO (FunPtr (IO TangoDevLong64))
-foreign import ccall "wrapper" createSetterWrapper :: (TangoDevLong64 -> IO ()) -> IO (FunPtr (TangoDevLong64 -> IO ()))
+foreign import ccall "wrapper" createGetterWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
+foreign import ccall "wrapper" createSetterWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
 
 data HaskellAttributeDefinition = HaskellAttributeDefinition
   { attribute_name :: !CString
   , data_type :: !HaskellTangoDataType
   , write_type :: HaskellAttrWriteType
-  , set_callback :: FunPtr (TangoDevLong64 -> IO ())
-  , get_callback :: FunPtr (IO TangoDevLong64)
+  , set_callback :: FunPtr (Ptr () -> IO ())
+  , get_callback :: FunPtr (Ptr () -> IO ())
   } deriving(Show, Generic)
 
 instance GStorable HaskellAttributeDefinition

@@ -5,8 +5,8 @@ namespace {
     std::string name;
     TangoDataType data_type;
     AttrWriteType write_type;
-    void (*set_callback)(TangoDevLong64);
-    TangoDevLong64 (*get_callback)();
+    void (*set_callback)(void *);
+    void (*get_callback)(void *);
   };
 
   std::vector<AttributeDefinitionCpp> attribute_definitions;
@@ -71,20 +71,40 @@ namespace {
     
     virtual void read(Tango::DeviceImpl *dev,Tango::Attribute &att)
     {
-      TangoDevLong64 int_value = def.get_callback();
-      std::cout << "get callback\n";
-      // Takes a pointer (to support arrays and such)
-      att.set_value(&int_value);
-      std::cout << "get callback done\n";
+      if (def.data_type == DEV_LONG64) {
+	TangoDevLong64 int_value;
+	std::cout << "haskell get callback\n";
+	def.get_callback(&int_value);
+	std::cout << "get callback done\n";
+	std::cout << "attr get callback\n";
+	att.set_value(&int_value);
+	std::cout << "attr get callback done\n";
+      } else if (def.data_type == DEV_BOOLEAN) {
+	bool value;
+	std::cout << "haskell get callback (bool)\n";
+	def.get_callback(&value);
+	std::cout << "get callback done\n";
+	std::cout << "attr get callback (bool)\n";
+	att.set_value(&value);
+	std::cout << "attr get callback done\n";
+      }
     }
     
     virtual void write(Tango::DeviceImpl *dev,Tango::WAttribute &att)
     {
-      Tango::DevLong64	w_val;
-      att.get_write_value(w_val);
-      std::cout << "set callback " << w_val << "\n";
-      def.set_callback(w_val);
-      std::cout << "set callback " << w_val << " done\n";
+      if (def.data_type == DEV_LONG64) {
+	Tango::DevLong64 w_val;
+	att.get_write_value(w_val);
+	std::cout << "set callback " << w_val << "\n";
+	def.set_callback(&w_val);
+	std::cout << "set callback " << w_val << " done\n";
+      } else if (def.data_type == DEV_BOOLEAN) {
+	Tango::DevBoolean w_val;
+	att.get_write_value(w_val);
+	std::cout << "set callback " << w_val << "\n";
+	def.set_callback(&w_val);
+	std::cout << "set callback " << w_val << " done\n";
+      }
     }
     
     virtual bool is_allowed(Tango::DeviceImpl *dev,Tango::AttReqType ty) {
@@ -401,11 +421,3 @@ void tango_start_server() {
       tg->server_cleanup();
     }
 }
-
-// void tango_set_attribute_getter(TangoDevLong64 (*ptr)()) {
-//   JustOneAttributeClass::instance()->set_attribute_getter(ptr);
-// }
-
-// void tango_set_attribute_setter(void (*ptr)(TangoDevLong64)) {
-//   JustOneAttributeClass::instance()->set_attribute_setter(ptr);
-// }
