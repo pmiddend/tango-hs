@@ -4,19 +4,33 @@
 import Foreign.C (CLong)
 import Foreign.C.String (CString, newCString, peekCString, withCString)
 import Foreign.Marshal (free, peekArray, with)
+import Foreign.Marshal.Alloc (free, malloc)
 import Foreign.Marshal.Array (withArray)
+import Foreign.Marshal.Utils (new)
 import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Storable (peek, poke)
 import Tango
-  ( HaskellAttrWriteType (ReadWrite),
+  ( HaskellAttrWriteType (Read, ReadWrite),
     HaskellAttributeDefinition (..),
-    HaskellTangoDataType (HaskellDevBoolean, HaskellDevLong64),
-    createGetterWrapper,
-    createSetterWrapper,
+    HaskellTangoDataType (HaskellDevBoolean, HaskellDevLong64, HaskellDevString),
+    createFnWrapper,
     tango_add_attribute_definition,
     tango_init_server,
     tango_start_server,
   )
+
+attributeStringGetter :: Ptr () -> IO ()
+attributeStringGetter ptr = do
+  cstr <- newCString "test string 123"
+  poke (castPtr ptr) cstr
+
+attributeStringSetter :: Ptr () -> IO ()
+attributeStringSetter ptr = do
+  putStrLn "in setter"
+  cstr :: CString <- peek (castPtr ptr)
+  putStrLn "peeked"
+  mycstring <- peekCString cstr
+  putStrLn $ "string was |" <> mycstring <> "|"
 
 attributeLongGetter :: Ptr () -> IO ()
 attributeLongGetter ptr = do
@@ -42,14 +56,16 @@ main :: IO ()
 main = do
   withCString "JustOneAttribute" \first -> withCString "testdevice" \second -> do
     withArray [first, second] \a -> do
-      withCString "long_attribute" \longAttributeName -> withCString "bool_attribute" \boolAttributeName -> do
-        longGetterWrapped <- createGetterWrapper attributeLongGetter
-        longSetterWrapped <- createSetterWrapper attributeLongSetter
-        with (HaskellAttributeDefinition longAttributeName HaskellDevLong64 ReadWrite longSetterWrapped longGetterWrapped) \attributeDefinition -> do
+      withCString "long_attribute" \longAttributeName -> withCString "string_attribute" \stringAttributeName -> do
+        longGetterWrapped <- createFnWrapper attributeLongGetter
+        longSetterWrapped <- createFnWrapper attributeLongSetter
+        dummyFinalizerWrapped <- createFnWrapper (const $ pure ())
+        with (HaskellAttributeDefinition longAttributeName HaskellDevLong64 ReadWrite longSetterWrapped longGetterWrapped dummyFinalizerWrapped) \attributeDefinition -> do
           tango_add_attribute_definition attributeDefinition
-        boolGetterWrapped <- createGetterWrapper attributeBoolGetter
-        boolSetterWrapped <- createSetterWrapper attributeBoolSetter
-        with (HaskellAttributeDefinition boolAttributeName HaskellDevBoolean ReadWrite boolSetterWrapped boolGetterWrapped) \attributeDefinition -> do
+        stringGetterWrapped <- createFnWrapper attributeStringGetter
+        stringSetterWrapped <- createFnWrapper attributeStringSetter
+        freeFinalizerWrapped <- createFnWrapper free
+        with (HaskellAttributeDefinition stringAttributeName HaskellDevString ReadWrite stringSetterWrapped stringGetterWrapped freeFinalizerWrapped) \attributeDefinition -> do
           tango_add_attribute_definition attributeDefinition
         tango_init_server 2 a
         tango_start_server

@@ -7,6 +7,7 @@ namespace {
     AttrWriteType write_type;
     void (*set_callback)(void *);
     void (*get_callback)(void *);
+    void (*finalizer_callback)(void *);
   };
 
   std::vector<AttributeDefinitionCpp> attribute_definitions;
@@ -64,7 +65,15 @@ namespace {
   public:
     haskellAttrib(
 		  AttributeDefinitionCpp const &def)
-      : Attr(def.name.c_str(), static_cast<long>(def.data_type), Tango::OPERATOR, static_cast<Tango::AttrWriteType>(def.write_type)), def{def}
+      : Attr(
+	     def.name.c_str(),
+	     static_cast<long>(def.data_type),
+	     Tango::OPERATOR,
+	     static_cast<Tango::AttrWriteType>(def.write_type)
+        ),
+	def{def},
+	last_ptr{0},
+	last_container{0}
     {}
     
     ~haskellAttrib() {}
@@ -87,6 +96,44 @@ namespace {
 	std::cout << "attr get callback (bool)\n";
 	att.set_value(&value);
 	std::cout << "attr get callback done\n";
+      } else if (def.data_type == DEV_STRING) {
+	std::cout << "haskell get callback (string)\n";
+	char *haskell_string;
+	def.get_callback(&haskell_string);
+	std::cout << "get callback done, haskell string:\n";
+	std::cout << haskell_string << "\n";
+	std::cout << "value output done\n";
+	std::cout << "attr get callback (string)\n";
+
+	char **tango_string_array = new char*;
+
+	*tango_string_array = haskell_string;
+	
+	// tango_string_array[0] = haskell_string;
+	// size_t const len = strlen(haskell_string);
+	// char *haskell_string_copy = new char[len+1];
+	// strncpy(haskell_string_copy, haskell_string, len);
+	// haskell_string_copy[len] = 0;
+	// free(haskell_string);
+	// tango_string_array[0] = haskell_string_copy;
+	att.set_value(tango_string_array, 1, 0, false);
+
+	// delete tango_string_array;
+	
+	std::cout << "attr get callback done, last ptr " << this->last_ptr << "\n";
+	if (this->last_ptr != 0) {
+	  std::cout << "freeing old ptr" << std::endl;
+	  def.finalizer_callback(this->last_ptr);
+	  this->last_ptr = 0;
+	  delete static_cast<char **>(this->last_container);
+	  this->last_container = 0;
+	}
+	std::cout << "setting last ptr\n";
+	this->last_ptr = haskell_string;
+	this->last_container = tango_string_array;
+	//def.get_callback_finalizer(value);
+	//free(value);
+	//free(haskell_string);
       }
     }
     
@@ -104,6 +151,12 @@ namespace {
 	std::cout << "set callback " << w_val << "\n";
 	def.set_callback(&w_val);
 	std::cout << "set callback " << w_val << " done\n";
+      } else if (def.data_type == DEV_STRING) {
+	Tango::DevString w_val;
+	att.get_write_value(w_val);
+	std::cout << "string write value |" << w_val << "|\n";
+	def.set_callback(&w_val);
+	std::cout << "set callback done\n";
       }
     }
     
@@ -112,6 +165,8 @@ namespace {
     }
   private:
     AttributeDefinitionCpp const &def;
+    void *last_ptr;
+    void *last_container;
   };
   
   // class philippAttrib: public Tango::Attr
@@ -355,7 +410,8 @@ void tango_add_attribute_definition(AttributeDefinition *definition) {
 				    definition->data_type,
 				    definition->write_type,
 				    definition->set_callback,
-				    definition->get_callback
+				    definition->get_callback,
+				    definition->finalizer_callback,
 				  }
 				  );
 }

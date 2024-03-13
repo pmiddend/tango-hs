@@ -431,6 +431,7 @@ void tango_free_DbData(DbData *db_data);
     AttrWriteType write_type;
     void (*set_callback)(void *);
     void (*get_callback)(void *);
+    void (*finalizer_callback)(void *);
   } AttributeDefinition;
 
   void tango_add_attribute_definition(AttributeDefinition *);

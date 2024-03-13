@@ -28,6 +28,10 @@
           };
 
           packageName = "tango-hs";
+
+          my-cpptango = pkgs.tango-cpptango.overrideAttrs (old: {
+            src = /home/pmidden/code/tango-projects/cppTango;
+          });
         in
         {
           packages.${packageName} =
@@ -46,7 +50,7 @@
 
             nativeBuildInputs = with pkgs; [ cmake pkg-config ];
             buildInputs = with pkgs; [
-              tango-cpptango
+              my-cpptango
               zeromq
               cppzmq
               omniorb_4_2
@@ -67,8 +71,12 @@
                 haskellPackages.hlint
                 haskellPackages.apply-refact
 
+                # debugging
+                valgrind
+                gdb
+
                 # Needed for pkg-config tango
-                tango-cpptango
+                my-cpptango
                 pkg-config
                 zeromq
                 cppzmq

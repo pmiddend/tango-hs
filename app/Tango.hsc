@@ -16,8 +16,7 @@ module Tango(tango_create_device_proxy,
              tango_command_inout,
              tango_free_AttributeData,
              tango_free_CommandData,
-             createGetterWrapper,
-             createSetterWrapper,
+             createFnWrapper,
              tango_start_server,
              tango_init_server,
              tango_set_timeout_millis,
@@ -946,8 +945,7 @@ type TangoDevLong64 = CLong
 -- foreign import ccall "c_tango.h tango_set_attribute_setter"
 --      tango_set_attribute_setter :: FunPtr (TangoDevLong64 -> IO ()) -> IO ()
 
-foreign import ccall "wrapper" createGetterWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
-foreign import ccall "wrapper" createSetterWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
+foreign import ccall "wrapper" createFnWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
 
 data HaskellAttributeDefinition = HaskellAttributeDefinition
   { attribute_name :: !CString
@@ -955,6 +953,7 @@ data HaskellAttributeDefinition = HaskellAttributeDefinition
   , write_type :: HaskellAttrWriteType
   , set_callback :: FunPtr (Ptr () -> IO ())
   , get_callback :: FunPtr (Ptr () -> IO ())
+  , finalizer_callback :: FunPtr (Ptr () -> IO ())
   } deriving(Show, Generic)
 
 instance GStorable HaskellAttributeDefinition

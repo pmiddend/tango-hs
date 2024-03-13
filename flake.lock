@@ -79,7 +79,7 @@
         "dirtyRev": "ca2cdfb98f52401a849d02b876e72e0b052aa412-dirty",
         "dirtyShortRev": "ca2cdfb-dirty",
         "lastModified": 1710060115,
-        "narHash": "sha256-ZEJ1dEsarF4tBcHXKU2eFWgfXqk1RHnBR+GNpJnjRD4=",
+        "narHash": "sha256-j0ABYNhWnasGkHMqqTkheTkllCX9+te7DsxHq3Z77sg=",
         "type": "git",
         "url": "file:///home/pmidden/code/tango-flake"
       },
