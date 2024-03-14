@@ -16,10 +16,6 @@ namespace {
   public:
     static JustOneAttributeClass *init(const char *);
     static JustOneAttributeClass *instance();
-    void set_attribute_getter(Tango::DevLong64 (*ptr)());
-    void set_attribute_setter(void (*ptr)(Tango::DevLong64));
-    Tango::DevLong64 (*attribute_getter)();
-    void (*attribute_setter)(Tango::DevLong64);
   protected:
     JustOneAttributeClass(std::string &);
     void command_factory();
@@ -35,8 +31,6 @@ namespace {
   class JustOneAttribute : public TANGO_BASE_CLASS
   {
   public:
-    // Tango::DevLong64	*attr_philipp_read;
-
     JustOneAttribute(Tango::DeviceClass *cl,const char *s);
     ~JustOneAttribute();
     
@@ -56,8 +50,6 @@ namespace {
 
   private:
     JustOneAttributeClass &parent_class;
-    // Tango::DevLong64 (*attribute_getter)();
-
   };
   
   class haskellAttrib: public Tango::Attr
@@ -98,6 +90,8 @@ namespace {
 	std::cout << "attr get callback done\n";
       } else if (def.data_type == DEV_STRING) {
 	std::cout << "haskell get callback (string)\n";
+	// Future me: when you want to wrap this nicely, here's how this came to be:
+	// We allocate a C string on the Haskell side, and get the pointer here
 	char *haskell_string;
 	def.get_callback(&haskell_string);
 	std::cout << "get callback done, haskell string:\n";
@@ -105,35 +99,29 @@ namespace {
 	std::cout << "value output done\n";
 	std::cout << "attr get callback (string)\n";
 
+	// We also need a container for this C string, which we allocate on the heap here.
 	char **tango_string_array = new char*;
 
+	// And fill it with one element
 	*tango_string_array = haskell_string;
-	
-	// tango_string_array[0] = haskell_string;
-	// size_t const len = strlen(haskell_string);
-	// char *haskell_string_copy = new char[len+1];
-	// strncpy(haskell_string_copy, haskell_string, len);
-	// haskell_string_copy[len] = 0;
-	// free(haskell_string);
-	// tango_string_array[0] = haskell_string_copy;
+
+	// Then we tell Tango about this. It will remember both the container and the element in it
 	att.set_value(tango_string_array, 1, 0, false);
 
-	// delete tango_string_array;
-	
 	std::cout << "attr get callback done, last ptr " << this->last_ptr << "\n";
+	// If this is the second "get", the we have a container and a string leftover
 	if (this->last_ptr != 0) {
 	  std::cout << "freeing old ptr" << std::endl;
+	  // The element was allocated with Haskell's malloc (or similar) and has to be deleted from Haskell as well.
 	  def.finalizer_callback(this->last_ptr);
 	  this->last_ptr = 0;
+	  // The other element we allocated with new, so we can delete it here
 	  delete static_cast<char **>(this->last_container);
 	  this->last_container = 0;
 	}
 	std::cout << "setting last ptr\n";
 	this->last_ptr = haskell_string;
 	this->last_container = tango_string_array;
-	//def.get_callback_finalizer(value);
-	//free(value);
-	//free(haskell_string);
       }
     }
     
@@ -169,20 +157,6 @@ namespace {
     void *last_container;
   };
   
-  // class philippAttrib: public Tango::Attr
-  // {
-  // public:
-  //   philippAttrib():Attr("philipp",
-  // 			 Tango::DEV_LONG64, Tango::READ_WRITE) {};
-  //   ~philippAttrib() {};
-  //   virtual void read(Tango::DeviceImpl *dev,Tango::Attribute &att)
-  //   {(static_cast<JustOneAttribute *>(dev))->read_philipp(att);}
-  //   virtual void write(Tango::DeviceImpl *dev,Tango::WAttribute &att)
-  //   {(static_cast<JustOneAttribute *>(dev))->write_philipp(att);}
-  //   virtual bool is_allowed(Tango::DeviceImpl *dev,Tango::AttReqType ty)
-  //   {return (static_cast<JustOneAttribute *>(dev))->is_philipp_allowed(ty);}
-  // };
-
   JustOneAttributeClass *JustOneAttributeClass::_instance = NULL;
 
   JustOneAttributeClass *JustOneAttributeClass::instance()
@@ -212,16 +186,6 @@ namespace {
     return _instance;
   }
 
-  void JustOneAttributeClass::set_attribute_getter(Tango::DevLong64 (*ptr)())
-  {
-    this->attribute_getter = ptr;
-  }
-  
-  void JustOneAttributeClass::set_attribute_setter(void (*ptr)(Tango::DevLong64))
-  {
-    this->attribute_setter = ptr;
-  }
-  
   JustOneAttributeClass::JustOneAttributeClass(std::string &s):Tango::DeviceClass(s)
   {
     TANGO_LOG_INFO << "Entering JustOneAttributeClass constructor" << std::endl;
@@ -358,31 +322,6 @@ namespace {
     DEBUG_STREAM << "JustOneAttribute::write_attr_hardware(std::vector<long> &attr_list) entering... " << std::endl;
   }
 
-  // void JustOneAttribute::read_philipp(Tango::Attribute &attr)
-  // {
-  //   DEBUG_STREAM << "JustOneAttribute::read_philipp(Tango::Attribute &attr) entering... " << std::endl;
-  //   std::cout << "calling attribute getter" << std::endl;
-  //   this->attr_philipp_read[0] = this->parent_class.attribute_getter();
-  //   std::cout << "calling attribute getter done" << std::endl;
-  //   attr.set_value(attr_philipp_read);
-  // }
-
-  //--------------------------------------------------------
-  /**
-   *	Write attribute philipp related method
-   *
-   *
-   *	Data type:	Tango::DevLong64
-   *	Attr type:	Scalar
-   */
-  //--------------------------------------------------------
-  // void JustOneAttribute::write_philipp(Tango::WAttribute &attr)
-  // {
-  //   DEBUG_STREAM << "JustOneAttribute::write_philipp(Tango::WAttribute &attr) entering... " << std::endl;
-  //   Tango::DevLong64	w_val;
-  //   attr.get_write_value(w_val);
-  //   this->parent_class.attribute_setter(w_val);
-  // }
 
   void JustOneAttribute::add_dynamic_attributes()
   {
