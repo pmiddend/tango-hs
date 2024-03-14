@@ -77,6 +77,7 @@
 
                 # Needed for pkg-config tango
                 my-cpptango
+                clang-tools
                 pkg-config
                 zeromq
                 cppzmq
