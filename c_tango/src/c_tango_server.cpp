@@ -352,7 +352,7 @@ void Tango::DServer::class_factory()
   add_class(JustOneAttributeClass::init("JustOneAttribute"));
 }
 
-void tango_add_attribute_definition(AttributeDefinition *definition) {
+void tango_server_add_attribute_definition(AttributeDefinition *definition) {
   attribute_definitions.push_back(
 				  AttributeDefinitionCpp{
 				    definition->attribute_name,
@@ -365,7 +365,7 @@ void tango_add_attribute_definition(AttributeDefinition *definition) {
 				  );
 }
 
-int tango_init_server(
+int tango_server_init(
 		      int argc,
 		      char *argv[],
 		      char *initial_status,
@@ -409,7 +409,7 @@ int tango_init_server(
 
 }
 
-void tango_start_server() {
+void tango_server_start() {
   Tango::Util *tg = Tango::Util::instance();
   if (!tg)
     return;

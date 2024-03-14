@@ -10,6 +10,8 @@ module Tango(tango_create_device_proxy,
              tango_delete_device_proxy,
              tango_read_attribute,
              tango_write_attribute,
+             tango_server_set_status,
+             tango_server_set_state,
              HaskellTangoDevState(..),
              HaskellAttributeDefinition (..),
              HaskellAttrWriteType(..),
@@ -17,11 +19,11 @@ module Tango(tango_create_device_proxy,
              tango_free_AttributeData,
              tango_free_CommandData,
              createFnWrapper,
-             tango_start_server,
-             tango_init_server,
+             tango_server_start,
+             tango_server_init,
              tango_set_timeout_millis,
              tango_create_database_proxy,
-             tango_add_attribute_definition,
+             tango_server_add_attribute_definition,
              tango_delete_database_proxy,
              tango_get_property,
              tango_command_query,
@@ -931,11 +933,11 @@ foreign import ccall "c_tango.h tango_free_DbDatum"
 foreign import ccall "c_tango.h tango_free_DbData"
      tango_free_DbData :: Ptr HaskellDbData -> IO ()
 
-foreign import ccall "c_tango.h tango_init_server"
-     tango_init_server :: CInt -> Ptr CString -> CString -> CInt -> IO ()
+foreign import ccall "c_tango.h tango_server_init"
+     tango_server_init :: CInt -> Ptr CString -> CString -> CInt -> IO ()
 
-foreign import ccall "c_tango.h tango_start_server"
-     tango_start_server :: IO ()
+foreign import ccall "c_tango.h tango_server_start"
+     tango_server_start :: IO ()
 
 type TangoDevLong64 = CLong
 
@@ -952,5 +954,11 @@ data HaskellAttributeDefinition = HaskellAttributeDefinition
 
 instance GStorable HaskellAttributeDefinition
 
-foreign import ccall "c_tango.h tango_add_attribute_definition"
-     tango_add_attribute_definition :: Ptr HaskellAttributeDefinition -> IO ()
+foreign import ccall "c_tango.h tango_server_add_attribute_definition"
+     tango_server_add_attribute_definition :: Ptr HaskellAttributeDefinition -> IO ()
+
+foreign import ccall "c_tango.h tango_server_set_status"
+     tango_server_set_status :: CString -> IO ()
+
+foreign import ccall "c_tango.h tango_server_set_state"
+     tango_server_set_state :: CInt -> IO ()

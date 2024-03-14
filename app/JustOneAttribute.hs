@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+import Control.Concurrent (forkIO, threadDelay)
 import Foreign.C (CInt, CLong)
 import Foreign.C.String (CString, newCString, peekCString, withCString)
 import Foreign.Marshal (free, peekArray, with)
@@ -15,9 +16,10 @@ import Tango
     HaskellTangoDataType (HaskellDevBoolean, HaskellDevLong64, HaskellDevString),
     HaskellTangoDevState (Moving),
     createFnWrapper,
-    tango_add_attribute_definition,
-    tango_init_server,
-    tango_start_server,
+    tango_server_add_attribute_definition,
+    tango_server_init,
+    tango_server_set_status,
+    tango_server_start,
   )
 
 attributeStringGetter :: Ptr () -> IO ()
@@ -62,12 +64,18 @@ main = do
         longSetterWrapped <- createFnWrapper attributeLongSetter
         dummyFinalizerWrapped <- createFnWrapper (const $ pure ())
         with (HaskellAttributeDefinition longAttributeName HaskellDevLong64 ReadWrite longSetterWrapped longGetterWrapped dummyFinalizerWrapped) \attributeDefinition -> do
-          tango_add_attribute_definition attributeDefinition
+          tango_server_add_attribute_definition attributeDefinition
         stringGetterWrapped <- createFnWrapper attributeStringGetter
         stringSetterWrapped <- createFnWrapper attributeStringSetter
         freeFinalizerWrapped <- createFnWrapper free
         with (HaskellAttributeDefinition stringAttributeName HaskellDevString ReadWrite stringSetterWrapped stringGetterWrapped freeFinalizerWrapped) \attributeDefinition -> do
-          tango_add_attribute_definition attributeDefinition
+          tango_server_add_attribute_definition attributeDefinition
         withCString "initial status hihihi" \initialStatus -> do
-          tango_init_server 2 a initialStatus (fromIntegral $ fromEnum $ Moving)
-          tango_start_server
+          tango_server_init 2 a initialStatus (fromIntegral $ fromEnum $ Moving)
+          forkIO do
+            putStrLn "sleeping"
+            threadDelay (5 * 1000 * 1000)
+            putStrLn "setting status"
+            withCString "new status" tango_server_set_status
+            putStrLn "setting status done"
+          tango_server_start

@@ -434,10 +434,10 @@ void tango_free_DbData(DbData *db_data);
     void (*finalizer_callback)(void *);
   } AttributeDefinition;
 
-  void tango_add_attribute_definition(AttributeDefinition *);
+  void tango_server_add_attribute_definition(AttributeDefinition *);
   /* void tango_server_set_state(TangoDevState); */
   /* void tango_server_set_status(char *); */
-  int tango_init_server(
+  int tango_server_init(
 			int argc,
 			char *argv[],
 			char *initial_status,
@@ -445,7 +445,7 @@ void tango_free_DbData(DbData *db_data);
 			);
   void tango_server_set_status(char *);
   void tango_server_set_state(int);
-  void tango_start_server();
+  void tango_server_start();
 
 #ifdef __cplusplus
 }      /* extern "C" */
