@@ -257,6 +257,6 @@ executable JustOneAttribute
     hs-source-dirs:    app
     ghc-options:       -threaded -rtsopts
     -- include-dirs: c_tango/src
-    hsc2hs-options:    --cc g++ --lflag=-lstdc++ -k -DCABAL_BINDGEN=1
+    hsc2hs-options:    -k --define=CABAL_BINDGEN=1
     pkgconfig-depends: ctango
     default-language:  Haskell2010

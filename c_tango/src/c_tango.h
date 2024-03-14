@@ -19,7 +19,7 @@
 #include <stdbool.h>
 #endif
 
-#ifdef HASKELL_BINDGEN
+#ifdef CABAL_BINDGEN
 typedef int32_t TangoDevLong;
 typedef uint32_t TangoDevULong;
 typedef int64_t TangoDevLong64;

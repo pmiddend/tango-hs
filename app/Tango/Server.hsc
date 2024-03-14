@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CApiFFI #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -31,10 +32,10 @@ import Tango.Common (HaskellAttrWriteType, HaskellTangoDataType)
 
 #include <c_tango.h>
 
-foreign import ccall "c_tango.h tango_server_init"
+foreign import capi "c_tango.h tango_server_init"
   tango_server_init :: CInt -> Ptr CString -> CString -> CInt -> IO ()
 
-foreign import ccall "c_tango.h tango_server_start"
+foreign import capi "c_tango.h tango_server_start"
   tango_server_start :: IO ()
 
 type TangoDevLong64 = CLong
@@ -53,11 +54,11 @@ data HaskellAttributeDefinition = HaskellAttributeDefinition
 
 instance GStorable HaskellAttributeDefinition
 
-foreign import ccall "c_tango.h tango_server_add_attribute_definition"
+foreign import capi "c_tango.h tango_server_add_attribute_definition"
   tango_server_add_attribute_definition :: Ptr HaskellAttributeDefinition -> IO ()
 
-foreign import ccall "c_tango.h tango_server_set_status"
+foreign import capi "c_tango.h tango_server_set_status"
   tango_server_set_status :: CString -> IO ()
 
-foreign import ccall "c_tango.h tango_server_set_state"
+foreign import capi "c_tango.h tango_server_set_state"
   tango_server_set_state :: CInt -> IO ()

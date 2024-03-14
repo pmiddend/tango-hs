@@ -52,10 +52,10 @@ import Tango
     tango_get_object_list,
     tango_get_object_property_list,
     tango_get_property,
-    tango_get_source,
+    -- tango_get_source,
     tango_get_timeout_millis,
-    tango_is_locked,
-    tango_is_locked_by_me,
+    -- tango_is_locked,
+    -- tango_is_locked_by_me,
     tango_lock,
     tango_locking_status,
     tango_read_attribute,
@@ -129,17 +129,17 @@ main2 = do
     checkResult (tango_lock proxyPtr)
     putStrLn "=> locked"
 
-    alloca $ \boolPtr -> do
-      putStrLn "<= checking lock status"
-      checkResult (tango_is_locked proxyPtr boolPtr)
-      lockStatus <- peek boolPtr
-      putStrLn ("=> lock status: " <> show lockStatus)
-      when (not lockStatus) (error "we locked the device and then asked for the lock status and it was false - how can that be?")
-      putStrLn "<= locked by me?"
-      checkResult (tango_is_locked_by_me proxyPtr boolPtr)
-      lockedByMe <- peek boolPtr
-      putStrLn ("=> locked by me: " <> show lockedByMe)
-      when (not lockedByMe) (error "we locked the device and then asked if _we_ locked it and it was false - how can that be?")
+    -- alloca $ \boolPtr -> do
+    --   putStrLn "<= checking lock status"
+    --   checkResult (tango_is_locked proxyPtr boolPtr)
+    --   lockStatus <- peek boolPtr
+    --   putStrLn ("=> lock status: " <> show lockStatus)
+    --   when (not lockStatus) (error "we locked the device and then asked for the lock status and it was false - how can that be?")
+    -- putStrLn "<= locked by me?"
+    -- checkResult (tango_is_locked_by_me proxyPtr boolPtr)
+    -- lockedByMe <- peek boolPtr
+    -- putStrLn ("=> locked by me: " <> show lockedByMe)
+    -- when (not lockedByMe) (error "we locked the device and then asked if _we_ locked it and it was false - how can that be?")
 
     putStrLn "<= unlocking"
     checkResult (tango_unlock proxyPtr)
@@ -163,11 +163,11 @@ main2 = do
     checkResult (tango_set_source proxyPtr (devSourceToInt Dev))
     putStrLn "=> source set"
 
-    putStrLn "<= getting source"
-    alloca $ \sourcePtr -> do
-      checkResult (tango_get_source proxyPtr sourcePtr)
-      source <- peek sourcePtr
-      putStrLn ("=> source is " <> show (devSourceFromInt source))
+    -- putStrLn "<= getting source"
+    -- alloca $ \sourcePtr -> do
+    --   checkResult (tango_get_source proxyPtr sourcePtr)
+    --   source <- peek sourcePtr
+    --   putStrLn ("=> source is " <> show (devSourceFromInt source))
 
     putStrLn "<= listing commands"
     alloca $ \commandInfoListPtr -> do
