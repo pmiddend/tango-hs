@@ -249,7 +249,8 @@ common warnings
 executable JustOneAttribute
     import:            warnings
     main-is:           JustOneAttribute.hs
-    other-modules:     Tango
+    other-modules:     Tango.Common
+                     , Tango.Server
     build-depends:     base
                      , text
                      , derive-storable

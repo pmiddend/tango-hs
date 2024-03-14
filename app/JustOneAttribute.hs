@@ -10,11 +10,13 @@ import Foreign.Marshal.Array (withArray)
 import Foreign.Marshal.Utils (new)
 import Foreign.Ptr (FunPtr, Ptr, castPtr)
 import Foreign.Storable (peek, poke)
-import Tango
+import Tango.Common
   ( HaskellAttrWriteType (Read, ReadWrite),
-    HaskellAttributeDefinition (..),
     HaskellTangoDataType (HaskellDevBoolean, HaskellDevLong64, HaskellDevString),
     HaskellTangoDevState (Moving),
+  )
+import Tango.Server
+  ( HaskellAttributeDefinition (..),
     createFnWrapper,
     tango_server_add_attribute_definition,
     tango_server_init,
