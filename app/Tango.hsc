@@ -932,18 +932,12 @@ foreign import ccall "c_tango.h tango_free_DbData"
      tango_free_DbData :: Ptr HaskellDbData -> IO ()
 
 foreign import ccall "c_tango.h tango_init_server"
-     tango_init_server :: CInt -> Ptr CString -> IO ()
+     tango_init_server :: CInt -> Ptr CString -> CString -> CInt -> IO ()
 
 foreign import ccall "c_tango.h tango_start_server"
      tango_start_server :: IO ()
 
 type TangoDevLong64 = CLong
-
--- foreign import ccall "c_tango.h tango_set_attribute_getter"
---      tango_set_attribute_getter :: FunPtr (IO TangoDevLong64) -> IO ()
-
--- foreign import ccall "c_tango.h tango_set_attribute_setter"
---      tango_set_attribute_setter :: FunPtr (TangoDevLong64 -> IO ()) -> IO ()
 
 foreign import ccall "wrapper" createFnWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
 

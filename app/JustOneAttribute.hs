@@ -1,18 +1,19 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Foreign.C (CLong)
+import Foreign.C (CInt, CLong)
 import Foreign.C.String (CString, newCString, peekCString, withCString)
 import Foreign.Marshal (free, peekArray, with)
 import Foreign.Marshal.Alloc (free, malloc)
 import Foreign.Marshal.Array (withArray)
 import Foreign.Marshal.Utils (new)
-import Foreign.Ptr (Ptr, castPtr)
+import Foreign.Ptr (FunPtr, Ptr, castPtr)
 import Foreign.Storable (peek, poke)
 import Tango
   ( HaskellAttrWriteType (Read, ReadWrite),
     HaskellAttributeDefinition (..),
     HaskellTangoDataType (HaskellDevBoolean, HaskellDevLong64, HaskellDevString),
+    HaskellTangoDevState (Moving),
     createFnWrapper,
     tango_add_attribute_definition,
     tango_init_server,
@@ -67,5 +68,6 @@ main = do
         freeFinalizerWrapped <- createFnWrapper free
         with (HaskellAttributeDefinition stringAttributeName HaskellDevString ReadWrite stringSetterWrapped stringGetterWrapped freeFinalizerWrapped) \attributeDefinition -> do
           tango_add_attribute_definition attributeDefinition
-        tango_init_server 2 a
-        tango_start_server
+        withCString "initial status hihihi" \initialStatus -> do
+          tango_init_server 2 a initialStatus (fromIntegral $ fromEnum $ Moving)
+          tango_start_server

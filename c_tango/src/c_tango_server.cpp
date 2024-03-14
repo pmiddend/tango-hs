@@ -10,6 +10,9 @@ namespace {
     void (*finalizer_callback)(void *);
   };
 
+  Tango::DevState initial_state;
+  std::string initial_status;
+
   std::vector<AttributeDefinitionCpp> attribute_definitions;
 
   class JustOneAttributeClass : public Tango::DeviceClass {
@@ -31,6 +34,8 @@ namespace {
   class JustOneAttribute : public TANGO_BASE_CLASS
   {
   public:
+    static JustOneAttribute *instance();
+    
     JustOneAttribute(Tango::DeviceClass *cl,const char *s);
     ~JustOneAttribute();
     
@@ -41,16 +46,25 @@ namespace {
     virtual void read_attr_hardware(std::vector<long> &attr_list);
     virtual void write_attr_hardware(std::vector<long> &attr_list);
 
-    // virtual void read_philipp(Tango::Attribute &attr);
-    // virtual void write_philipp(Tango::WAttribute &attr);
-    // virtual bool is_philipp_allowed(Tango::AttReqType type);
-
     void add_dynamic_attributes();
     void add_dynamic_commands();
 
   private:
     JustOneAttributeClass &parent_class;
+    static JustOneAttribute *_instance;
   };
+
+  JustOneAttribute *JustOneAttribute::_instance = 0;
+
+  JustOneAttribute *JustOneAttribute::instance()
+  {
+    if (_instance == 0)
+      {
+	std::cerr << "Class JustOneAttribute is not initialised!" << std::endl;
+	exit(-1);
+      }
+    return _instance;
+  }
   
   class haskellAttrib: public Tango::Attr
   {
@@ -273,24 +287,20 @@ namespace {
   }
 
   
-  // JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, std::string &s)
-  //   : TANGO_BASE_CLASS(cl, s.c_str())
-  // {
-  //   init_device();
-  // }
-
   JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s)
-    : TANGO_BASE_CLASS(cl, s), parent_class(static_cast<JustOneAttributeClass &>(*cl))
+    : TANGO_BASE_CLASS(
+		       cl,
+		       s,
+		       "description",
+		       initial_state,
+		       initial_status
+		       ),
+      parent_class(static_cast<JustOneAttributeClass &>(*cl))
   {
+    _instance = this;
     init_device();
   }
-  // //--------------------------------------------------------
-  // JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s, const char *d)
-  //   : TANGO_BASE_CLASS(cl, s, d)
-  // {
-  //   init_device();
-  // }
-  //--------------------------------------------------------
+  
   JustOneAttribute::~JustOneAttribute()
   {
     delete_device();
@@ -355,7 +365,19 @@ void tango_add_attribute_definition(AttributeDefinition *definition) {
 				  );
 }
 
-int tango_init_server(int argc, char *argv[]) {
+int tango_init_server(
+		      int argc,
+		      char *argv[],
+		      char *initial_status,
+		      int _initial_state
+		      ) {
+  // Technically bad, since we're keeping memory for this initial
+  // string indefinitely (we could clear it at some point), but it's
+  // much more handy than keeping the externally delivered char
+  // pointer
+  ::initial_status = std::string{initial_status};
+  ::initial_state = static_cast<Tango::DevState>(_initial_state);
+  
   Tango::Util *tg;
   try
     {
@@ -415,4 +437,15 @@ void tango_start_server() {
     {
       tg->server_cleanup();
     }
+}
+
+void tango_server_set_status(char *new_status)
+{
+  // Memeory-wise, this is fine, since set_status gets a std::string.
+  JustOneAttribute::instance()->set_status(new_status);
+}
+
+void tango_server_set_state(int const new_state)
+{
+  JustOneAttribute::instance()->set_state(static_cast<Tango::DevState>(new_state));
 }
