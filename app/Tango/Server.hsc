@@ -13,9 +13,13 @@ module Tango.Server
     tango_server_start,
     tango_server_init,
     tango_server_add_attribute_definition,
+    tango_server_add_command_definition,
+    createCommandCallback,
+    createGlobalFinalizer,
     tango_server_set_state,
     createFnWrapper,
     HaskellAttributeDefinition (..),
+    HaskellCommandDefinition (..),
   )
 where
 
@@ -32,30 +36,50 @@ import Tango.Common (HaskellAttrWriteType, HaskellTangoDataType)
 
 #include <c_tango.h>
 
+type GlobalFinalizer = Ptr () -> IO ()
+
+foreign import ccall "wrapper" createGlobalFinalizer :: GlobalFinalizer -> IO (FunPtr GlobalFinalizer)
+
+foreign import ccall "wrapper" createFnWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
+
 foreign import capi "c_tango.h tango_server_init"
-  tango_server_init :: CInt -> Ptr CString -> CString -> CInt -> IO ()
+  tango_server_init :: CInt -> Ptr CString -> FunPtr GlobalFinalizer -> CString -> CInt -> IO ()
 
 foreign import capi "c_tango.h tango_server_start"
   tango_server_start :: IO ()
 
 type TangoDevLong64 = CLong
 
-foreign import ccall "wrapper" createFnWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
-
 data HaskellAttributeDefinition = HaskellAttributeDefinition
   { attribute_name :: !CString,
     data_type :: !HaskellTangoDataType,
     write_type :: HaskellAttrWriteType,
     set_callback :: FunPtr (Ptr () -> IO ()),
-    get_callback :: FunPtr (Ptr () -> IO ()),
-    finalizer_callback :: FunPtr (Ptr () -> IO ())
+    get_callback :: FunPtr (Ptr () -> IO ())
   }
   deriving (Show, Generic)
 
 instance GStorable HaskellAttributeDefinition
 
+type CommandCallback = Ptr () -> IO (Ptr ())
+
+foreign import ccall "wrapper" createCommandCallback :: CommandCallback -> IO (FunPtr CommandCallback)
+
+data HaskellCommandDefinition = HaskellCommandDefinition
+  { command_name :: !CString,
+    in_type :: !HaskellTangoDataType,
+    out_type :: !HaskellTangoDataType,
+    execute_callback :: FunPtr CommandCallback
+  }
+  deriving (Show, Generic)
+
+instance GStorable HaskellCommandDefinition
+
 foreign import capi "c_tango.h tango_server_add_attribute_definition"
   tango_server_add_attribute_definition :: Ptr HaskellAttributeDefinition -> IO ()
+
+foreign import capi "c_tango.h tango_server_add_command_definition"
+  tango_server_add_command_definition :: Ptr HaskellCommandDefinition -> IO ()
 
 foreign import capi "c_tango.h tango_server_set_status"
   tango_server_set_status :: CString -> IO ()

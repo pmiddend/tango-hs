@@ -13,18 +13,20 @@
 #include "c_tango.h"
 
 ErrorStack *tango_translate_exception(Tango::DevFailed &tango_exception);
-static void convert_cmd_query(Tango::CommandInfo &tango_cmd_info,
-                              CommandInfo *cmd_info);
+static void convert_cmd_query(Tango::CommandInfo &tango_cmd_info, CommandInfo *cmd_info);
 
-ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
-                                CommandData *argout) {
+ErrorStack *
+tango_command_inout(void *proxy, char *cmd_name, CommandData *argin, CommandData *argout)
+{
   Tango::DeviceProxy *dev = (Tango::DeviceProxy *)proxy;
   Tango::DeviceData cmd_in;
   Tango::DeviceData cmd_out;
 
-  try {
+  try
+  {
     // convert the input argument
-    switch (argin->arg_type) {
+    switch (argin->arg_type)
+    {
     case DEV_VOID:
       break;
 
@@ -69,21 +71,25 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       cmd_in << argin->cmd_data.string_val;
       break;
 
-    case DEV_ENCODED: {
-      Tango::DevVarCharArray tmp(argin->cmd_data.encoded_val.encoded_length,
-                                 argin->cmd_data.encoded_val.encoded_length,
-                                 argin->cmd_data.encoded_val.encoded_data);
+    case DEV_ENCODED:
+    {
+      Tango::DevVarCharArray tmp(
+          argin->cmd_data.encoded_val.encoded_length,
+          argin->cmd_data.encoded_val.encoded_length,
+          argin->cmd_data.encoded_val.encoded_data);
       cmd_in.insert(argin->cmd_data.encoded_val.encoded_format, &tmp);
       break;
     }
 
-#define INSERT_ARRAY(member, type)                                             \
-  {                                                                            \
-    std::vector<type> arr(argin->cmd_data.member.length);                      \
-    memcpy(arr.data(), argin->cmd_data.char_arr.sequence,                      \
-           sizeof(type) * argin->cmd_data.char_arr.length);                    \
-    cmd_in << arr;                                                             \
-    break;                                                                     \
+#define INSERT_ARRAY(member, type) \
+  { \
+    std::vector<type> arr(argin->cmd_data.member.length); \
+    memcpy( \
+        arr.data(), \
+        argin->cmd_data.char_arr.sequence, \
+        sizeof(type) * argin->cmd_data.char_arr.length); \
+    cmd_in << arr; \
+    break; \
   }
 
     case DEVVAR_CHARARRAY:
@@ -105,10 +111,12 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
     case DEVVAR_DOUBLEARRAY:
       INSERT_ARRAY(double_arr, double);
 
-    case DEVVAR_STRINGARRAY: {
+    case DEVVAR_STRINGARRAY:
+    {
       std::vector<std::string> string_arr(argin->cmd_data.string_arr.length);
 
-      for (uint32_t i = 0; i < argin->cmd_data.string_arr.length; i++) {
+      for (uint32_t i = 0; i < argin->cmd_data.string_arr.length; i++)
+      {
         string_arr[i] = argin->cmd_data.string_arr.sequence[i];
       }
 
@@ -116,18 +124,17 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       break;
     }
 
-    case DEVVAR_LONGSTRINGARRAY: {
-      std::vector<Tango::DevLong> long_arr(
-          argin->cmd_data.long_string_arr.long_length);
-      std::vector<std::string> string_arr(
-          argin->cmd_data.long_string_arr.string_length);
+    case DEVVAR_LONGSTRINGARRAY:
+    {
+      std::vector<Tango::DevLong> long_arr(argin->cmd_data.long_string_arr.long_length);
+      std::vector<std::string> string_arr(argin->cmd_data.long_string_arr.string_length);
 
-      for (uint32_t i = 0; i < argin->cmd_data.long_string_arr.long_length;
-           i++) {
+      for (uint32_t i = 0; i < argin->cmd_data.long_string_arr.long_length; i++)
+      {
         long_arr[i] = argin->cmd_data.long_string_arr.long_sequence[i];
       }
-      for (uint32_t i = 0; i < argin->cmd_data.long_string_arr.string_length;
-           i++) {
+      for (uint32_t i = 0; i < argin->cmd_data.long_string_arr.string_length; i++)
+      {
         string_arr[i] = argin->cmd_data.long_string_arr.string_sequence[i];
       }
 
@@ -135,18 +142,17 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       break;
     }
 
-    case DEVVAR_DOUBLESTRINGARRAY: {
-      std::vector<double> double_arr(
-          argin->cmd_data.double_string_arr.double_length);
-      std::vector<std::string> string_arr(
-          argin->cmd_data.double_string_arr.string_length);
+    case DEVVAR_DOUBLESTRINGARRAY:
+    {
+      std::vector<double> double_arr(argin->cmd_data.double_string_arr.double_length);
+      std::vector<std::string> string_arr(argin->cmd_data.double_string_arr.string_length);
 
-      for (uint32_t i = 0; i < argin->cmd_data.double_string_arr.double_length;
-           i++) {
+      for (uint32_t i = 0; i < argin->cmd_data.double_string_arr.double_length; i++)
+      {
         double_arr[i] = argin->cmd_data.double_string_arr.double_sequence[i];
       }
-      for (uint32_t i = 0; i < argin->cmd_data.double_string_arr.string_length;
-           i++) {
+      for (uint32_t i = 0; i < argin->cmd_data.double_string_arr.string_length; i++)
+      {
         string_arr[i] = argin->cmd_data.double_string_arr.string_sequence[i];
       }
 
@@ -163,20 +169,27 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
     }
 
     // treat the void case!
-    if (argin->arg_type == DEV_VOID) {
+    if (argin->arg_type == DEV_VOID)
+    {
       cmd_out = dev->command_inout(cmd_name);
-    } else {
+    }
+    else
+    {
       cmd_out = dev->command_inout(cmd_name, cmd_in);
     }
-    try {
+    try
+    {
       cmd_out.is_empty();
       argout->arg_type = (TangoDataType)cmd_out.get_type();
-    } catch (Tango::DevFailed &e) {
+    }
+    catch (Tango::DevFailed &e)
+    {
       argout->arg_type = DEV_VOID;
     }
 
     // convert the output argument
-    switch (argout->arg_type) {
+    switch (argout->arg_type)
+    {
     case DEV_VOID:
       break;
 
@@ -192,28 +205,32 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       cmd_out >> argout->cmd_data.ushort_val;
       break;
 
-    case DEV_LONG: {
+    case DEV_LONG:
+    {
       Tango::DevLong long_val;
       cmd_out >> long_val;
       argout->cmd_data.long_val = long_val;
       break;
     }
 
-    case DEV_ULONG: {
+    case DEV_ULONG:
+    {
       Tango::DevULong ulong_val;
       cmd_out >> ulong_val;
       argout->cmd_data.ulong_val = ulong_val;
       break;
     }
 
-    case DEV_LONG64: {
+    case DEV_LONG64:
+    {
       Tango::DevLong64 long64_val;
       cmd_out >> long64_val;
       argout->cmd_data.long64_val = long64_val;
       break;
     }
 
-    case DEV_ULONG64: {
+    case DEV_ULONG64:
+    {
       Tango::DevULong64 ulong64_val;
       cmd_out >> ulong64_val;
       argout->cmd_data.ulong64_val = ulong64_val;
@@ -228,7 +245,8 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       cmd_out >> argout->cmd_data.double_val;
       break;
 
-    case DEV_STATE: {
+    case DEV_STATE:
+    {
       Tango::DevState state_val;
       cmd_out >> state_val;
       argout->cmd_data.state_val = (TangoDevState)state_val;
@@ -236,14 +254,16 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
     }
 
     case DEV_STRING:
-    case CONST_DEV_STRING: {
+    case CONST_DEV_STRING:
+    {
       std::string string_val;
       cmd_out >> string_val;
       argout->cmd_data.string_val = strdup(string_val.c_str());
       break;
     }
 
-    case DEV_ENCODED: {
+    case DEV_ENCODED:
+    {
       Tango::DevEncoded encoded_val;
       cmd_out >> encoded_val;
 
@@ -251,21 +271,19 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       argout->cmd_data.encoded_val.encoded_format = strdup(format.c_str());
 
       // get the pointer to the buffer and take over the memory ("true")
-      argout->cmd_data.encoded_val.encoded_length =
-          encoded_val.encoded_data.length();
+      argout->cmd_data.encoded_val.encoded_length = encoded_val.encoded_data.length();
       argout->cmd_data.encoded_val.encoded_data =
           (unsigned char *)encoded_val.encoded_data.get_buffer(true);
       break;
     }
 
-#define EXTRACT_ARRAY(member, tgtype)                                          \
-  {                                                                            \
-    const Tango::tgtype *seq;                                                  \
-    cmd_out >> seq;                                                            \
-    argout->cmd_data.member.length = seq->length();                            \
-    argout->cmd_data.member.sequence =                                         \
-        ((Tango::tgtype *)seq)->get_buffer(true);                              \
-    break;                                                                     \
+#define EXTRACT_ARRAY(member, tgtype) \
+  { \
+    const Tango::tgtype *seq; \
+    cmd_out >> seq; \
+    argout->cmd_data.member.length = seq->length(); \
+    argout->cmd_data.member.sequence = ((Tango::tgtype *)seq)->get_buffer(true); \
+    break; \
   }
 
     case DEVVAR_CHARARRAY:
@@ -287,7 +305,8 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
     case DEVVAR_DOUBLEARRAY:
       EXTRACT_ARRAY(double_arr, DevVarDoubleArray);
 
-    case DEVVAR_STRINGARRAY: {
+    case DEVVAR_STRINGARRAY:
+    {
       std::vector<std::string> string_vect;
       int nb_data;
 
@@ -297,14 +316,15 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       argout->cmd_data.string_arr.sequence = new char *[nb_data];
       argout->cmd_data.string_arr.length = nb_data;
 
-      for (int i = 0; i < nb_data; i++) {
-        argout->cmd_data.string_arr.sequence[i] =
-            strdup(string_vect[i].c_str());
+      for (int i = 0; i < nb_data; i++)
+      {
+        argout->cmd_data.string_arr.sequence[i] = strdup(string_vect[i].c_str());
       }
       break;
     }
 
-    case DEVVAR_LONGSTRINGARRAY: {
+    case DEVVAR_LONGSTRINGARRAY:
+    {
       std::vector<Tango::DevLong> long_vect;
       std::vector<std::string> string_vect;
       int nb_data;
@@ -312,24 +332,25 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       cmd_out.extract(long_vect, string_vect);
 
       nb_data = long_vect.size();
-      argout->cmd_data.long_string_arr.long_sequence =
-          new Tango::DevLong[nb_data];
+      argout->cmd_data.long_string_arr.long_sequence = new Tango::DevLong[nb_data];
       argout->cmd_data.long_string_arr.long_length = nb_data;
-      for (int i = 0; i < nb_data; i++) {
+      for (int i = 0; i < nb_data; i++)
+      {
         argout->cmd_data.long_string_arr.long_sequence[i] = long_vect[i];
       }
 
       nb_data = string_vect.size();
       argout->cmd_data.long_string_arr.string_sequence = new char *[nb_data];
       argout->cmd_data.long_string_arr.string_length = nb_data;
-      for (int i = 0; i < nb_data; i++) {
-        argout->cmd_data.long_string_arr.string_sequence[i] =
-            strdup(string_vect[i].c_str());
+      for (int i = 0; i < nb_data; i++)
+      {
+        argout->cmd_data.long_string_arr.string_sequence[i] = strdup(string_vect[i].c_str());
       }
       break;
     }
 
-    case DEVVAR_DOUBLESTRINGARRAY: {
+    case DEVVAR_DOUBLESTRINGARRAY:
+    {
       std::vector<double> double_vect;
       std::vector<std::string> string_vect;
       int nb_data;
@@ -339,16 +360,17 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
       nb_data = double_vect.size();
       argout->cmd_data.double_string_arr.double_sequence = new double[nb_data];
       argout->cmd_data.double_string_arr.double_length = nb_data;
-      for (int i = 0; i < nb_data; i++) {
+      for (int i = 0; i < nb_data; i++)
+      {
         argout->cmd_data.double_string_arr.double_sequence[i] = double_vect[i];
       }
 
       nb_data = string_vect.size();
       argout->cmd_data.double_string_arr.string_sequence = new char *[nb_data];
       argout->cmd_data.double_string_arr.string_length = nb_data;
-      for (int i = 0; i < nb_data; i++) {
-        argout->cmd_data.double_string_arr.string_sequence[i] =
-            strdup(string_vect[i].c_str());
+      for (int i = 0; i < nb_data; i++)
+      {
+        argout->cmd_data.double_string_arr.string_sequence[i] = strdup(string_vect[i].c_str());
       }
       break;
     }
@@ -360,14 +382,18 @@ ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
           "c_tango_command.c::tango_command_inout()");
       break;
     }
-  } catch (Tango::DevFailed &tango_exception) {
+  }
+  catch (Tango::DevFailed &tango_exception)
+  {
     return tango_translate_exception(tango_exception);
   }
   return 0;
 }
 
-void tango_free_CommandData(CommandData *command_data) {
-  switch (command_data->arg_type) {
+void tango_free_CommandData(CommandData *command_data)
+{
+  switch (command_data->arg_type)
+  {
   case DEV_STRING:
     free(command_data->cmd_data.string_val); // from strdup
     break;
@@ -414,7 +440,8 @@ void tango_free_CommandData(CommandData *command_data) {
     break;
 
   case DEVVAR_STRINGARRAY:
-    for (uint32_t i = 0; i < command_data->cmd_data.string_arr.length; i++) {
+    for (uint32_t i = 0; i < command_data->cmd_data.string_arr.length; i++)
+    {
       free(command_data->cmd_data.string_arr.sequence[i]); // from strdup
     }
     delete[] command_data->cmd_data.string_arr.sequence;
@@ -422,20 +449,18 @@ void tango_free_CommandData(CommandData *command_data) {
 
   case DEVVAR_LONGSTRINGARRAY:
     delete[] command_data->cmd_data.long_string_arr.long_sequence;
-    for (uint32_t i = 0;
-         i < command_data->cmd_data.long_string_arr.string_length; i++) {
-      free(command_data->cmd_data.long_string_arr
-               .string_sequence[i]); // from strdup
+    for (uint32_t i = 0; i < command_data->cmd_data.long_string_arr.string_length; i++)
+    {
+      free(command_data->cmd_data.long_string_arr.string_sequence[i]); // from strdup
     }
     delete[] command_data->cmd_data.long_string_arr.string_sequence;
     break;
 
   case DEVVAR_DOUBLESTRINGARRAY:
     delete[] command_data->cmd_data.double_string_arr.double_sequence;
-    for (uint32_t i = 0;
-         i < command_data->cmd_data.double_string_arr.string_length; i++) {
-      free(command_data->cmd_data.double_string_arr
-               .string_sequence[i]); // from strdup
+    for (uint32_t i = 0; i < command_data->cmd_data.double_string_arr.string_length; i++)
+    {
+      free(command_data->cmd_data.double_string_arr.string_sequence[i]); // from strdup
     }
     delete[] command_data->cmd_data.double_string_arr.string_sequence;
     break;
@@ -445,35 +470,42 @@ void tango_free_CommandData(CommandData *command_data) {
   }
 }
 
-ErrorStack *tango_command_query(void *proxy, char *cmd_name,
-                                CommandInfo *cmd_info) {
+ErrorStack *tango_command_query(void *proxy, char *cmd_name, CommandInfo *cmd_info)
+{
   Tango::DeviceProxy *dev = (Tango::DeviceProxy *)proxy;
   Tango::CommandInfo tango_cmd_info;
 
-  try {
+  try
+  {
     tango_cmd_info = dev->command_query(cmd_name);
     convert_cmd_query(tango_cmd_info, cmd_info);
-  } catch (Tango::DevFailed &tango_exception) {
+  }
+  catch (Tango::DevFailed &tango_exception)
+  {
     return tango_translate_exception(tango_exception);
   }
   return 0;
 }
 
-ErrorStack *tango_command_list_query(void *proxy,
-                                     CommandInfoList *cmd_info_list) {
+ErrorStack *tango_command_list_query(void *proxy, CommandInfoList *cmd_info_list)
+{
   Tango::DeviceProxy *dev = (Tango::DeviceProxy *)proxy;
   std::vector<Tango::CommandInfo> *tango_cmd_info_list = 0;
 
-  try {
+  try
+  {
     tango_cmd_info_list = dev->command_list_query();
 
     INIT_SEQ(*cmd_info_list, CommandInfo, tango_cmd_info_list->size());
 
-    for (uint32_t i = 0; i < tango_cmd_info_list->size(); i++) {
+    for (uint32_t i = 0; i < tango_cmd_info_list->size(); i++)
+    {
       convert_cmd_query((*tango_cmd_info_list)[i], &cmd_info_list->sequence[i]);
     }
     delete tango_cmd_info_list;
-  } catch (Tango::DevFailed &tango_exception) {
+  }
+  catch (Tango::DevFailed &tango_exception)
+  {
     if (tango_cmd_info_list)
       delete tango_cmd_info_list;
     return tango_translate_exception(tango_exception);
@@ -481,22 +513,25 @@ ErrorStack *tango_command_list_query(void *proxy,
   return 0;
 }
 
-void tango_free_CommandInfo(CommandInfo *command_info) {
+void tango_free_CommandInfo(CommandInfo *command_info)
+{
   free(command_info->cmd_name); // from strdup
   free(command_info->in_type_desc);
   free(command_info->out_type_desc);
 }
 
-void tango_free_CommandInfoList(CommandInfoList *command_info_list) {
-  for (uint32_t i = 0; i < command_info_list->length; i++) {
+void tango_free_CommandInfoList(CommandInfoList *command_info_list)
+{
+  for (uint32_t i = 0; i < command_info_list->length; i++)
+  {
     tango_free_CommandInfo(&(command_info_list->sequence[i]));
   }
 
   delete[] command_info_list->sequence;
 }
 
-static void convert_cmd_query(Tango::CommandInfo &tango_cmd_info,
-                              CommandInfo *cmd_info) {
+static void convert_cmd_query(Tango::CommandInfo &tango_cmd_info, CommandInfo *cmd_info)
+{
   cmd_info->cmd_name = strdup(tango_cmd_info.cmd_name.c_str());
   cmd_info->in_type_desc = strdup(tango_cmd_info.in_type_desc.c_str());
   cmd_info->out_type_desc = strdup(tango_cmd_info.out_type_desc.c_str());

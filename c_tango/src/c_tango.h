@@ -32,11 +32,12 @@ typedef Tango::DevLong64 TangoDevLong64;
 typedef Tango::DevULong64 TangoDevULong64;
 #endif
 
-#define INIT_SEQ(seq, type, size)                                              \
-  (seq).length = size;                                                         \
+#define INIT_SEQ(seq, type, size) \
+  (seq).length = size; \
   (seq).sequence = new type[size]
 
-typedef enum {
+typedef enum
+{
   DEV_VOID = 0,
   DEV_BOOLEAN,
   DEV_SHORT,
@@ -71,7 +72,8 @@ typedef enum {
   DEVVAR_ENCODEDARRAY = 32
 } TangoDataType;
 
-typedef enum {
+typedef enum
+{
   ON,
   OFF,
   CLOSE,
@@ -88,7 +90,8 @@ typedef enum {
   UNKNOWN
 } TangoDevState;
 
-typedef enum {
+typedef enum
+{
   ATTR_VALID,
   ATTR_INVALID,
   ATTR_ALARM,
@@ -96,102 +99,144 @@ typedef enum {
   ATTR_WARNING
 } AttrQuality;
 
-typedef enum { READ, READ_WITH_WRITE, WRITE, READ_WRITE } AttrWriteType;
+typedef enum
+{
+  READ,
+  READ_WITH_WRITE,
+  WRITE,
+  READ_WRITE
+} AttrWriteType;
 
-typedef enum { SCALAR, SPECTRUM, IMAGE } AttrDataFormat;
+typedef enum
+{
+  SCALAR,
+  SPECTRUM,
+  IMAGE
+} AttrDataFormat;
 
-typedef enum { OPERATOR, EXPERT } DispLevel;
+typedef enum
+{
+  OPERATOR,
+  EXPERT
+} DispLevel;
 
-typedef enum { WARN, ERR, PANIC } ErrSeverity;
+typedef enum
+{
+  WARN,
+  ERR,
+  PANIC
+} ErrSeverity;
 
-typedef enum { DEV, CACHE, CACHE_DEV } DevSource;
+typedef enum
+{
+  DEV,
+  CACHE,
+  CACHE_DEV
+} DevSource;
 
-typedef struct {
+typedef struct
+{
   char *encoded_format;
   uint32_t encoded_length;
   uint8_t *encoded_data;
 } TangoDevEncoded;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   bool *sequence;
 } VarBoolArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   uint8_t *sequence;
 } VarCharArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   int16_t *sequence;
 } VarShortArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   uint16_t *sequence;
 } VarUShortArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   TangoDevLong *sequence;
 } VarLongArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   TangoDevULong *sequence;
 } VarULongArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   TangoDevLong64 *sequence;
 } VarLong64Array;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   TangoDevULong64 *sequence;
 } VarULong64Array;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   float *sequence;
 } VarFloatArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   double *sequence;
 } VarDoubleArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   char **sequence;
 } VarStringArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   TangoDevState *sequence;
 } VarStateArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   TangoDevEncoded *sequence;
 } VarEncodedArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t long_length;
   TangoDevLong *long_sequence;
   uint32_t string_length;
   char **string_sequence;
 } VarLongStringArray;
 
-typedef struct {
+typedef struct
+{
   uint32_t double_length;
   double *double_sequence;
   uint32_t string_length;
   char **string_sequence;
 } VarDoubleStringArray;
 
-typedef union {
+typedef union
+{
   VarBoolArray bool_arr;
   VarCharArray char_arr;
   VarShortArray short_arr;
@@ -207,7 +252,8 @@ typedef union {
   VarEncodedArray encoded_arr;
 } TangoAttributeData;
 
-typedef union {
+typedef union
+{
   bool bool_val;
   int16_t short_val;
   uint16_t ushort_val;
@@ -236,7 +282,8 @@ typedef union {
   VarDoubleStringArray double_string_arr;
 } TangoCommandData;
 
-typedef union {
+typedef union
+{
   bool bool_val;
   uint8_t char_val;
   int16_t short_val;
@@ -260,12 +307,14 @@ typedef union {
   VarStringArray string_arr;
 } TangoPropertyData;
 
-typedef struct {
+typedef struct
+{
   TangoDataType arg_type;
   TangoCommandData cmd_data;
 } CommandData;
 
-typedef struct {
+typedef struct
+{
   TangoDataType data_type;
   TangoAttributeData attr_data;
   AttrDataFormat data_format;
@@ -277,24 +326,28 @@ typedef struct {
   struct timeval time_stamp;
 } AttributeData;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   AttributeData *sequence;
 } AttributeDataList;
 
-typedef struct {
+typedef struct
+{
   char *desc;
   char *reason;
   char *origin;
   ErrSeverity severity;
 } DevFailed;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   DevFailed *sequence;
 } ErrorStack;
 
-typedef struct {
+typedef struct
+{
   char *cmd_name;
   int32_t cmd_tag;
   int32_t in_type;
@@ -304,12 +357,14 @@ typedef struct {
   DispLevel disp_level;
 } CommandInfo;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   CommandInfo *sequence;
 } CommandInfoList;
 
-typedef struct {
+typedef struct
+{
   char *name;
   AttrWriteType writable;
   AttrDataFormat data_format;
@@ -332,12 +387,14 @@ typedef struct {
   uint16_t enum_labels_count;
 } AttributeInfo;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   AttributeInfo *sequence;
 } AttributeInfoList;
 
-typedef struct {
+typedef struct
+{
   char *property_name;
   TangoDataType data_type;
   TangoPropertyData prop_data;
@@ -345,96 +402,98 @@ typedef struct {
   bool wrong_data_type;
 } DbDatum;
 
-typedef struct {
+typedef struct
+{
   uint32_t length;
   DbDatum *sequence;
 } DbData;
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-ErrorStack *tango_create_device_proxy(char *dev_name, void **proxy);
-ErrorStack *tango_delete_device_proxy(void *proxy);
-ErrorStack *tango_set_timeout_millis(void *proxy, int millis);
-ErrorStack *tango_get_timeout_millis(void *proxy, int *millis);
-ErrorStack *tango_set_source(void *proxy, DevSource source);
-ErrorStack *tango_get_source(void *proxy, DevSource *source);
-ErrorStack *tango_lock(void *proxy);
-ErrorStack *tango_unlock(void *proxy);
-ErrorStack *tango_is_locked(void *proxy, bool *is_locked);
-ErrorStack *tango_is_locked_by_me(void *proxy, bool *is_locked_by_me);
-ErrorStack *tango_locking_status(void *proxy, char **lock_status);
+  ErrorStack *tango_create_device_proxy(char *dev_name, void **proxy);
+  ErrorStack *tango_delete_device_proxy(void *proxy);
+  ErrorStack *tango_set_timeout_millis(void *proxy, int millis);
+  ErrorStack *tango_get_timeout_millis(void *proxy, int *millis);
+  ErrorStack *tango_set_source(void *proxy, DevSource source);
+  ErrorStack *tango_get_source(void *proxy, DevSource *source);
+  ErrorStack *tango_lock(void *proxy);
+  ErrorStack *tango_unlock(void *proxy);
+  ErrorStack *tango_is_locked(void *proxy, bool *is_locked);
+  ErrorStack *tango_is_locked_by_me(void *proxy, bool *is_locked_by_me);
+  ErrorStack *tango_locking_status(void *proxy, char **lock_status);
 
-ErrorStack *tango_command_query(void *proxy, char *cmd_name,
-                                CommandInfo *cmd_info);
-ErrorStack *tango_command_list_query(void *proxy,
-                                     CommandInfoList *cmd_info_list);
-ErrorStack *tango_command_inout(void *proxy, char *cmd_name, CommandData *argin,
-                                CommandData *argout);
-void tango_free_CommandData(CommandData *command_data);
-void tango_free_CommandInfo(CommandInfo *command_info);
-void tango_free_CommandInfoList(CommandInfoList *command_info_list);
+  ErrorStack *tango_command_query(void *proxy, char *cmd_name, CommandInfo *cmd_info);
+  ErrorStack *tango_command_list_query(void *proxy, CommandInfoList *cmd_info_list);
+  ErrorStack *
+  tango_command_inout(void *proxy, char *cmd_name, CommandData *argin, CommandData *argout);
+  void tango_free_CommandData(CommandData *command_data);
+  void tango_free_CommandInfo(CommandInfo *command_info);
+  void tango_free_CommandInfoList(CommandInfoList *command_info_list);
 
-ErrorStack *tango_get_attribute_list(void *proxy, VarStringArray *attr_names);
-ErrorStack *tango_get_attribute_config(void *proxy, VarStringArray *attr_names,
-                                       AttributeInfoList *attr_info_list);
-ErrorStack *tango_attribute_list_query(void *proxy,
-                                       AttributeInfoList *attr_info_list);
-ErrorStack *tango_read_attribute(void *proxy, char *attr_name,
-                                 AttributeData *argout);
-ErrorStack *tango_write_attribute(void *proxy, AttributeData *argin);
-ErrorStack *tango_read_attributes(void *proxy, VarStringArray *attr_names,
-                                  AttributeDataList *argout);
-ErrorStack *tango_write_attributes(void *proxy, AttributeDataList *argin);
-void tango_free_AttributeData(AttributeData *attribute_data);
-void tango_free_AttributeDataList(AttributeDataList *attribute_data_list);
-void tango_free_VarStringArray(VarStringArray *string_arr);
-void tango_free_AttributeInfoList(AttributeInfoList *attribute_info_list);
+  ErrorStack *tango_get_attribute_list(void *proxy, VarStringArray *attr_names);
+  ErrorStack *tango_get_attribute_config(
+      void *proxy, VarStringArray *attr_names, AttributeInfoList *attr_info_list);
+  ErrorStack *tango_attribute_list_query(void *proxy, AttributeInfoList *attr_info_list);
+  ErrorStack *tango_read_attribute(void *proxy, char *attr_name, AttributeData *argout);
+  ErrorStack *tango_write_attribute(void *proxy, AttributeData *argin);
+  ErrorStack *
+  tango_read_attributes(void *proxy, VarStringArray *attr_names, AttributeDataList *argout);
+  ErrorStack *tango_write_attributes(void *proxy, AttributeDataList *argin);
+  void tango_free_AttributeData(AttributeData *attribute_data);
+  void tango_free_AttributeDataList(AttributeDataList *attribute_data_list);
+  void tango_free_VarStringArray(VarStringArray *string_arr);
+  void tango_free_AttributeInfoList(AttributeInfoList *attribute_info_list);
 
-void tango_free_ErrorStack(ErrorStack *error_stack);
+  void tango_free_ErrorStack(ErrorStack *error_stack);
 
-ErrorStack *tango_create_database_proxy(void **db_proxy);
-ErrorStack *tango_delete_database_proxy(void *db_proxy);
-ErrorStack *tango_get_device_exported(void *db_proxy, char *name_filter,
-                                      DbDatum *dev_list);
-ErrorStack *tango_get_device_exported_for_class(void *db_proxy,
-                                                char *class_name,
-                                                DbDatum *dev_list);
-ErrorStack *tango_get_object_list(void *db_proxy, char *name_filter,
-                                  DbDatum *obj_list);
-ErrorStack *tango_get_object_property_list(void *db_proxy, char *obj_name,
-                                           char *name_filter,
-                                           DbDatum *prop_list);
-ErrorStack *tango_get_property(void *db_proxy, char *obj_name,
-                               DbData *prop_list);
-ErrorStack *tango_put_property(void *db_proxy, char *obj_name,
-                               DbData *prop_list);
-ErrorStack *tango_delete_property(void *db_proxy, char *obj_name,
-                                  DbData *prop_list);
-ErrorStack *tango_get_device_property(void *dev_proxy, DbData *prop_list);
-ErrorStack *tango_put_device_property(void *dev_proxy, DbData *prop_list);
-ErrorStack *tango_delete_device_property(void *dev_proxy, DbData *prop_list);
-void tango_free_DbDatum(DbDatum *db_datum);
-void tango_free_DbData(DbData *db_data);
+  ErrorStack *tango_create_database_proxy(void **db_proxy);
+  ErrorStack *tango_delete_database_proxy(void *db_proxy);
+  ErrorStack *tango_get_device_exported(void *db_proxy, char *name_filter, DbDatum *dev_list);
+  ErrorStack *
+  tango_get_device_exported_for_class(void *db_proxy, char *class_name, DbDatum *dev_list);
+  ErrorStack *tango_get_object_list(void *db_proxy, char *name_filter, DbDatum *obj_list);
+  ErrorStack *tango_get_object_property_list(
+      void *db_proxy, char *obj_name, char *name_filter, DbDatum *prop_list);
+  ErrorStack *tango_get_property(void *db_proxy, char *obj_name, DbData *prop_list);
+  ErrorStack *tango_put_property(void *db_proxy, char *obj_name, DbData *prop_list);
+  ErrorStack *tango_delete_property(void *db_proxy, char *obj_name, DbData *prop_list);
+  ErrorStack *tango_get_device_property(void *dev_proxy, DbData *prop_list);
+  ErrorStack *tango_put_device_property(void *dev_proxy, DbData *prop_list);
+  ErrorStack *tango_delete_device_property(void *dev_proxy, DbData *prop_list);
+  void tango_free_DbDatum(DbDatum *db_datum);
+  void tango_free_DbData(DbData *db_data);
 
-typedef struct {
-  char const *attribute_name;
-  TangoDataType data_type;
-  AttrWriteType write_type;
-  void (*set_callback)(void *);
-  void (*get_callback)(void *);
-  void (*finalizer_callback)(void *);
-} AttributeDefinition;
+  typedef struct
+  {
+    char const *attribute_name;
+    TangoDataType data_type;
+    AttrWriteType write_type;
+    void (*set_callback)(void *);
+    void (*get_callback)(void *);
+  } AttributeDefinition;
 
-void tango_server_add_attribute_definition(AttributeDefinition *);
-/* void tango_server_set_state(TangoDevState); */
-/* void tango_server_set_status(char *); */
-int tango_server_init(int argc, char *argv[], char *initial_status,
-                      int initial_state);
-void tango_server_set_status(char *);
-void tango_server_set_state(int);
-void tango_server_start();
+  typedef struct
+  {
+    char const *command_name;
+    TangoDataType in_type;
+    TangoDataType out_type;
+    void *(*execute_callback)(void *);
+  } CommandDefinition;
+
+  void tango_server_add_attribute_definition(AttributeDefinition *);
+  void tango_server_add_command_definition(CommandDefinition *);
+  int tango_server_init(
+      int argc,
+      char *argv[],
+      void (*global_finalizer_callback)(void *),
+      char *initial_status,
+      int initial_state);
+  void tango_server_set_status(char *);
+  void tango_server_set_state(int);
+  void tango_server_start();
 
 #ifdef __cplusplus
 } /* extern "C" */
