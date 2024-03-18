@@ -1,4 +1,5 @@
 #include "c_tango.h"
+#include <unordered_map>
 
 namespace
 {
@@ -19,6 +20,8 @@ std::string initial_status;
 void (*global_finalizer_callback)(void *);
 
 std::vector<AttributeDefinitionCpp> attribute_definitions;
+
+std::vector<std::string> properties;
 
 struct CommandDefinitionCpp
 {
@@ -100,6 +103,7 @@ public:
       // This will "delete[]" the argument, hence our copy here.
       return this->insert(copy);
     }
+    throw std::runtime_error("invalid type for command");
   }
 
   bool is_allowed(Tango::DeviceImpl *dev, const CORBA::Any &any) { return true; }
@@ -111,14 +115,19 @@ private:
 class JustOneAttributeClass : public Tango::DeviceClass
 {
 public:
+  Tango::DbData cl_prop;
+  Tango::DbData dev_def_prop;
+
   static JustOneAttributeClass *init(const char *);
   static JustOneAttributeClass *instance();
+
+  Tango::DbDatum get_class_property(std::string &);
+  Tango::DbDatum get_default_device_property(std::string &);
 
 protected:
   JustOneAttributeClass(std::string &);
   void command_factory();
   void attribute_factory(std::vector<Tango::Attr *> &);
-
   static JustOneAttributeClass *_instance;
 
 private:
@@ -145,8 +154,14 @@ public:
   void add_dynamic_attributes();
   void add_dynamic_commands();
 
+  std::string const &get_property_value(std::string const &s) const
+  {
+    return this->properties_values.at(s);
+  }
+
 private:
   JustOneAttributeClass &parent_class;
+  std::unordered_map<std::string, std::string> properties_values;
   static JustOneAttribute *_instance;
 };
 
@@ -310,6 +325,30 @@ JustOneAttributeClass *JustOneAttributeClass::init(const char *name)
   return _instance;
 }
 
+Tango::DbDatum JustOneAttributeClass::get_class_property(std::string &prop_name)
+{
+  // This code seems a bit redundant: we don't really touch cl_prop,
+  // so it must be empty. But okay, might make sense and I just don't
+  // get it.
+  for (unsigned int i = 0; i < cl_prop.size(); i++)
+    if (cl_prop[i].name == prop_name)
+      return cl_prop[i];
+  //	if not found, returns  an empty DbDatum
+  return Tango::DbDatum(prop_name);
+}
+
+Tango::DbDatum JustOneAttributeClass::get_default_device_property(std::string &prop_name)
+{
+  // This code seems a bit redundant: we don't really touch cl_prop,
+  // so it must be empty. But okay, might make sense and I just don't
+  // get it.
+  for (unsigned int i = 0; i < dev_def_prop.size(); i++)
+    if (dev_def_prop[i].name == prop_name)
+      return dev_def_prop[i];
+  //	if not found, returns  an empty DbDatum
+  return Tango::DbDatum(prop_name);
+}
+
 JustOneAttributeClass::JustOneAttributeClass(std::string &s) : Tango::DeviceClass(s)
 {
   TANGO_LOG_INFO << "Entering JustOneAttributeClass constructor" << std::endl;
@@ -414,10 +453,45 @@ void JustOneAttributeClass::create_static_attribute_list(std::vector<Tango::Attr
 
 JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s)
     : TANGO_BASE_CLASS(cl, s, "description", initial_state, initial_status),
-      parent_class(static_cast<JustOneAttributeClass &>(*cl))
+      parent_class(static_cast<JustOneAttributeClass &>(*cl)),
+      properties_values{}
 {
   _instance = this;
   init_device();
+
+  Tango::DbData dev_prop;
+  for (std::string const &property : ::properties)
+  {
+    dev_prop.push_back(Tango::DbDatum(property));
+  }
+
+  if (dev_prop.size() > 0)
+  {
+    //	Call database and extract values
+    if (Tango::Util::instance()->_UseDb == true)
+      get_db_device()->get_property(dev_prop);
+
+    for (auto prop : dev_prop)
+    {
+      Tango::DbDatum cl_prop = parent_class.get_class_property(prop.name);
+      std::vector<std::string> property_value;
+      if (!cl_prop.is_empty())
+        cl_prop >> property_value;
+      else
+      {
+        Tango::DbDatum def_prop = parent_class.get_default_device_property(prop.name);
+        if (!def_prop.is_empty())
+          def_prop >> property_value;
+      }
+      // and try to extract kacke_property value from database
+      if (!prop.is_empty())
+        prop >> property_value;
+      std::string final_string = "";
+      for (auto s : property_value)
+        final_string += s + "\n";
+      this->properties_values[prop.name] = final_string;
+    }
+  }
 }
 
 JustOneAttribute::~JustOneAttribute() { delete_device(); }
@@ -570,4 +644,14 @@ void tango_server_set_status(char *new_status)
 void tango_server_set_state(int const new_state)
 {
   JustOneAttribute::instance()->set_state(static_cast<Tango::DevState>(new_state));
+}
+
+void tango_server_add_property(char *property_name)
+{
+  ::properties.push_back(std::string{property_name});
+}
+
+char const *tango_server_read_property(char *property_name)
+{
+  return JustOneAttribute::instance()->get_property_value(property_name).c_str();
 }

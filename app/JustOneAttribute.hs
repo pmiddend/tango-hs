@@ -23,7 +23,9 @@ import Tango.Server
     createGlobalFinalizer,
     tango_server_add_attribute_definition,
     tango_server_add_command_definition,
+    tango_server_add_property,
     tango_server_init,
+    tango_server_read_property,
     tango_server_set_status,
     tango_server_start,
   )
@@ -123,7 +125,12 @@ main = do
           with (HaskellCommandDefinition command_name HaskellDevVoid HaskellDevLong64 commandCallback) \commandDefinition -> do
             tango_server_add_command_definition commandDefinition
         withCString "initial status hihihi" \initialStatus -> do
+          withCString "test_property" \testProperty -> tango_server_add_property testProperty
           tango_server_init 2 a freeFinalizerWrapped initialStatus (fromIntegral $ fromEnum $ Moving)
+          withCString "test_property" \testProperty -> do
+            testPropertyCString <- tango_server_read_property testProperty
+            testPropertyString <- peekCString testPropertyCString
+            putStrLn $ "property value: " <> testPropertyString
           forkIO do
             putStrLn "sleeping"
             threadDelay (5 * 1000 * 1000)

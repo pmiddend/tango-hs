@@ -16,6 +16,8 @@ module Tango.Server
     tango_server_add_command_definition,
     createCommandCallback,
     createGlobalFinalizer,
+    tango_server_add_property,
+    tango_server_read_property,
     tango_server_set_state,
     createFnWrapper,
     HaskellAttributeDefinition (..),
@@ -86,3 +88,9 @@ foreign import capi "c_tango.h tango_server_set_status"
 
 foreign import capi "c_tango.h tango_server_set_state"
   tango_server_set_state :: CInt -> IO ()
+
+foreign import capi "c_tango.h tango_server_add_property"
+  tango_server_add_property :: CString -> IO ()
+
+foreign import capi "c_tango.h tango_server_read_property"
+  tango_server_read_property :: CString -> IO CString

@@ -495,6 +495,9 @@ extern "C"
   void tango_server_set_state(int);
   void tango_server_start();
 
+  void tango_server_add_property(char *);
+  char const *tango_server_read_property(char *);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
