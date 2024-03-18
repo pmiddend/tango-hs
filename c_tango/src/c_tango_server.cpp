@@ -65,6 +65,16 @@ public:
       // Return value for void
       return new CORBA::Any();
     }
+    else if (this->get_in_type() == Tango::DEV_DOUBLE && this->get_out_type() == Tango::DEV_VOID)
+    {
+      Tango::DevDouble argin;
+      extract(in_any, argin);
+
+      this->execute_callback(&argin);
+
+      // Return value for void
+      return new CORBA::Any();
+    }
     else if (this->get_in_type() == Tango::DEV_STRING && this->get_out_type() == Tango::DEV_VOID)
     {
       Tango::DevString argin;
@@ -77,29 +87,31 @@ public:
     }
     else if (this->get_in_type() == Tango::DEV_VOID && this->get_out_type() == Tango::DEV_LONG64)
     {
-      std::cout << "executing void -> long64" << std::endl;
       void *result = this->execute_callback(0);
 
-      std::cout << "done, now casting the result" << std::endl;
       Tango::DevLong64 const number = *static_cast<Tango::DevLong64 *>(result);
-      std::cout << "calling global finalizer on result\n";
       ::global_finalizer_callback(result);
 
-      std::cout << "inserting result\n";
+      return this->insert(number);
+    }
+    else if (this->get_in_type() == Tango::DEV_VOID && this->get_out_type() == Tango::DEV_DOUBLE)
+    {
+      void *result = this->execute_callback(0);
+
+      Tango::DevDouble const number = *static_cast<Tango::DevDouble *>(result);
+      ::global_finalizer_callback(result);
+
       return this->insert(number);
     }
     else if (this->get_in_type() == Tango::DEV_VOID && this->get_out_type() == Tango::DEV_STRING)
     {
-      std::cout << "executing void -> string" << std::endl;
       char *const result = static_cast<char *>(this->execute_callback(0));
       size_t const len = strlen(result);
 
-      std::cout << "calling global finalizer on result\n";
       char *copy = new char[len + 1];
       strncpy(copy, result, len);
       ::global_finalizer_callback(result);
 
-      std::cout << "inserting result\n";
       // This will "delete[]" the argument, hence our copy here.
       return this->insert(copy);
     }
@@ -199,22 +211,20 @@ public:
     if (def.data_type == DEV_LONG64)
     {
       TangoDevLong64 int_value;
-      std::cout << "haskell get callback\n";
       def.get_callback(&int_value);
-      std::cout << "get callback done\n";
-      std::cout << "attr get callback\n";
       att.set_value(&int_value);
-      std::cout << "attr get callback done\n";
+    }
+    else if (def.data_type == DEV_DOUBLE)
+    {
+      Tango::DevDouble value;
+      def.get_callback(&value);
+      att.set_value(&value);
     }
     else if (def.data_type == DEV_BOOLEAN)
     {
       bool value;
-      std::cout << "haskell get callback (bool)\n";
       def.get_callback(&value);
-      std::cout << "get callback done\n";
-      std::cout << "attr get callback (bool)\n";
       att.set_value(&value);
-      std::cout << "attr get callback done\n";
     }
     else if (def.data_type == DEV_STRING)
     {
@@ -224,10 +234,6 @@ public:
       // here
       char *haskell_string;
       def.get_callback(&haskell_string);
-      std::cout << "get callback done, haskell string:\n";
-      std::cout << haskell_string << "\n";
-      std::cout << "value output done\n";
-      std::cout << "attr get callback (string)\n";
 
       // We also need a container for this C string, which we allocate on the
       // heap here.
@@ -240,12 +246,10 @@ public:
       // the element in it
       att.set_value(tango_string_array, 1, 0, false);
 
-      std::cout << "attr get callback done, last ptr " << this->last_ptr << "\n";
       // If this is the second "get", the we have a container and a string
       // leftover
       if (this->last_ptr != 0)
       {
-        std::cout << "freeing old ptr" << std::endl;
         // The element was allocated with Haskell's malloc (or similar) and has
         // to be deleted from Haskell as well.
         global_finalizer_callback(this->last_ptr);
@@ -254,7 +258,6 @@ public:
         delete static_cast<char **>(this->last_container);
         this->last_container = 0;
       }
-      std::cout << "setting last ptr\n";
       this->last_ptr = haskell_string;
       this->last_container = tango_string_array;
     }
@@ -266,25 +269,25 @@ public:
     {
       Tango::DevLong64 w_val;
       att.get_write_value(w_val);
-      std::cout << "set callback " << w_val << "\n";
       def.set_callback(&w_val);
-      std::cout << "set callback " << w_val << " done\n";
+    }
+    else if (def.data_type == DEV_DOUBLE)
+    {
+      Tango::DevDouble w_val;
+      att.get_write_value(w_val);
+      def.set_callback(&w_val);
     }
     else if (def.data_type == DEV_BOOLEAN)
     {
       Tango::DevBoolean w_val;
       att.get_write_value(w_val);
-      std::cout << "set callback " << w_val << "\n";
       def.set_callback(&w_val);
-      std::cout << "set callback " << w_val << " done\n";
     }
     else if (def.data_type == DEV_STRING)
     {
       Tango::DevString w_val;
       att.get_write_value(w_val);
-      std::cout << "string write value |" << w_val << "|\n";
       def.set_callback(&w_val);
-      std::cout << "set callback done\n";
     }
   }
 
