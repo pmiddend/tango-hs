@@ -541,3 +541,29 @@ static void convert_cmd_query(Tango::CommandInfo &tango_cmd_info, CommandInfo *c
   cmd_info->out_type = tango_cmd_info.out_type;
   cmd_info->disp_level = (DispLevel)tango_cmd_info.disp_level;
 }
+
+ErrorStack *tango_poll_command(void *db_proxy, char const *cmd_name, int polling_period)
+{
+  try
+  {
+    static_cast<Tango::DeviceProxy *>(db_proxy)->poll_command(cmd_name, polling_period);
+  }
+  catch (Tango::DevFailed &tango_exception)
+  {
+    return tango_translate_exception(tango_exception);
+  }
+  return 0;
+}
+
+ErrorStack * tango_stop_poll_command(void *db_proxy, char const *cmd_name)
+{
+  try
+  {
+    static_cast<Tango::DeviceProxy *>(db_proxy)->stop_poll_command(cmd_name);
+  }
+  catch (Tango::DevFailed &tango_exception)
+  {
+    return tango_translate_exception(tango_exception);
+  }
+  return 0;
+}

@@ -38,6 +38,20 @@ typedef Tango::DevULong64 TangoDevULong64;
 
 typedef enum
 {
+  CHANGE_EVENT = 0, ///< Change event
+  QUALITY_EVENT, ///< Quality change event (deprecated - do not use)
+  PERIODIC_EVENT, ///< Periodic event
+  ARCHIVE_EVENT, ///< Archive event
+  USER_EVENT, ///< User event
+  ATTR_CONF_EVENT, ///< Attribute configuration change event
+  DATA_READY_EVENT, ///< Data ready event
+  INTERFACE_CHANGE_EVENT, ///< Device interface change event
+  PIPE_EVENT, ///< Device pipe event
+  numEventType
+} TangoEventType;
+
+typedef enum
+{
   DEV_VOID = 0,
   DEV_BOOLEAN,
   DEV_SHORT,
@@ -465,6 +479,17 @@ extern "C"
   ErrorStack *tango_delete_device_property(void *dev_proxy, DbData *prop_list);
   void tango_free_DbDatum(DbDatum *db_datum);
   void tango_free_DbData(DbData *db_data);
+  ErrorStack *tango_poll_command(void *db_proxy, char const *cmd_name, int polling_period);
+  ErrorStack *tango_poll_attribute(void *db_proxy, char const *att_name, int polling_period);
+  ErrorStack *tango_stop_poll_command(void *db_proxy, char const *cmd_name);
+  ErrorStack *tango_stop_poll_attribute(void *db_proxy, char const *cmd_name);
+
+  // Deliberately left out the value here, it's too complicated to implement for now
+  void *tango_create_event_callback(void (*)(void *, char const *, bool));
+  void tango_free_event_callback(void *);
+  int tango_subscribe_event(
+      void *dev_proxy, char const *attribute, TangoEventType, void *event_callback, bool);
+  void tango_unsubscribe_event(void *dev_proxy, int event_id);
 
   typedef struct
   {

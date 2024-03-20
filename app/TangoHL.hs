@@ -33,7 +33,7 @@ import Foreign.Marshal.Utils (with)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Storable (peek)
 import System.IO (IO)
-import Tango
+import Tango.Common
   ( DeviceProxyPtr,
     HaskellAttributeData (..),
     HaskellAttributeDataList (attributeDataListSequence),
@@ -67,7 +67,7 @@ newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
 instance Exception TangoException
 
-checkResult :: UnliftIO.MonadUnliftIO m => m (Ptr HaskellErrorStack) -> m ()
+checkResult :: (UnliftIO.MonadUnliftIO m) => m (Ptr HaskellErrorStack) -> m ()
 checkResult action = do
   es <- action
   when (es /= nullPtr) $ do
@@ -76,7 +76,7 @@ checkResult action = do
     formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse ((pack <$>) . UnliftForeign.peekCString)) stackItems
     throw (TangoException formattedStackItems)
 
-withDeviceProxy :: forall m a. UnliftIO.MonadUnliftIO m => Text -> (DeviceProxyPtr -> m a) -> m a
+withDeviceProxy :: forall m a. (UnliftIO.MonadUnliftIO m) => Text -> (DeviceProxyPtr -> m a) -> m a
 withDeviceProxy proxyAddress =
   let initialize :: m DeviceProxyPtr
       initialize =
@@ -89,7 +89,7 @@ withDeviceProxy proxyAddress =
         liftIO $ checkResult (tango_delete_device_proxy proxyPtrPtr)
    in UnliftIO.bracket initialize deinitialize
 
-writeIntAttribute :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> Int -> m ()
+writeIntAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> Int -> m ()
 writeIntAttribute proxyPtr attributeName newValue = do
   UnliftForeign.withCString (unpack attributeName) $ \attributeNameC ->
     UnliftForeign.with (fromIntegral newValue) $ \newValuePtr -> UnliftForeign.with
@@ -108,7 +108,7 @@ writeIntAttribute proxyPtr attributeName newValue = do
       $ \newDataPtr ->
         liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
 
-readStringAttribute :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> m Text
+readStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Text
 readStringAttribute proxyPtr attributeNameHaskell =
   liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
     alloca $ \haskellAttributeDataPtr -> do
@@ -124,7 +124,7 @@ readStringAttribute proxyPtr attributeNameHaskell =
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not a string"
 
-readIntAttribute :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> m Int
+readIntAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Int
 readIntAttribute proxyPtr attributeNameHaskell =
   -- FIXME: This is 99% the same as readStringAttribute!
   liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
@@ -140,7 +140,7 @@ readIntAttribute proxyPtr attributeNameHaskell =
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not a string"
 
-commandInOutVoid :: UnliftIO.MonadUnliftIO m => DeviceProxyPtr -> Text -> m ()
+commandInOutVoid :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m ()
 commandInOutVoid proxyPtr commandName =
   liftIO $
     withCString (unpack commandName) $

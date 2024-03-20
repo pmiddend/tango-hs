@@ -14,9 +14,15 @@ module Tango.Common
     tango_read_attribute,
     tango_write_attribute,
     HaskellTangoDevState (..),
+    tango_poll_command,
+    tango_stop_poll_command,
+    tango_poll_attribute,
+    tango_stop_poll_attribute,
     HaskellAttrWriteType (..),
     tango_command_inout,
     tango_free_AttributeData,
+    createEventCallbackWrapper,
+    HaskellTangoEventType (..),
     tango_free_CommandData,
     tango_set_timeout_millis,
     tango_create_database_proxy,
@@ -70,6 +76,10 @@ module Tango.Common
     HaskellTangoAttributeData (..),
     devSourceToInt,
     devSourceFromInt,
+    tango_create_event_callback,
+    tango_free_event_callback,
+    tango_subscribe_event,
+    tango_unsubscribe_event,
   )
 where
 
@@ -78,7 +88,7 @@ import Data.List (find)
 import Data.Word (Word16, Word32, Word64, Word8)
 import Foreign (Storable (alignment, peek, poke, sizeOf), peekByteOff, pokeByteOff)
 import Foreign.C.String (CString, peekCString)
-import Foreign.C.Types (CBool, CChar, CDouble, CFloat, CInt (CInt), CLong (CLong), CShort, CUInt, CULong, CUShort)
+import Foreign.C.Types (CBool (CBool), CChar, CDouble, CFloat, CInt (CInt), CLong (CLong), CShort, CUInt, CULong, CUShort)
 import Foreign.Ptr (FunPtr, Ptr, castPtr)
 import Foreign.Storable.Generic (GStorable)
 import GHC.Generics (Generic)
@@ -236,6 +246,24 @@ instance Storable HaskellTangoDataType where
   alignment _ = (# alignment TangoDataType)
   peek = peekBounded "data type"
   poke = pokeBounded "data type"
+
+data HaskellTangoEventType
+  = HaskellEventTypeChangeEvent
+  | HaskellEventTypeQualityEvent
+  | HaskellEventTypePeriodicEvent
+  | HaskellEventTypeArchiveEvent
+  | HaskellEventTypeUserEvent
+  | HaskellEventTypeAttrConfEvent
+  | HaskellEventTypeDataReadyEvent
+  | HaskellEventTypeInterfaceChangeEvent
+  | HaskellEventTypePipeEvent
+  deriving (Show, Eq, Ord, Bounded, Enum)
+
+instance Storable HaskellTangoEventType where
+  sizeOf _ = (# size TangoEventType)
+  alignment _ = (# alignment TangoEventType)
+  peek = peekBounded "event type"
+  poke = pokeBounded "event type"
 
 data HaskellDataFormat
   = HaskellScalar
@@ -961,3 +989,31 @@ foreign import capi "c_tango.h tango_free_DbDatum"
 
 foreign import capi "c_tango.h tango_free_DbData"
   tango_free_DbData :: Ptr HaskellDbData -> IO ()
+
+type EventCallback = Ptr () -> CString -> Bool -> IO ()
+
+foreign import ccall "wrapper" createEventCallbackWrapper :: EventCallback -> IO (FunPtr EventCallback)
+
+foreign import capi "c_tango.h tango_create_event_callback"
+  tango_create_event_callback :: FunPtr EventCallback -> IO (Ptr ())
+
+foreign import capi "c_tango.h tango_free_event_callback"
+  tango_free_event_callback :: Ptr () -> IO ()
+
+foreign import capi "c_tango.h tango_subscribe_event"
+  tango_subscribe_event :: DeviceProxyPtr -> CString -> CInt -> Ptr () -> CBool -> IO CInt
+
+foreign import capi "c_tango.h tango_unsubscribe_event"
+  tango_unsubscribe_event :: DeviceProxyPtr -> CInt -> IO ()
+
+foreign import capi "c_tango.h tango_poll_command"
+  tango_poll_command :: DeviceProxyPtr -> CString -> CInt -> IO TangoError
+
+foreign import capi "c_tango.h tango_stop_poll_command"
+  tango_stop_poll_command :: DeviceProxyPtr -> CString -> IO TangoError
+
+foreign import capi "c_tango.h tango_poll_attribute"
+  tango_poll_attribute :: DeviceProxyPtr -> CString -> CInt -> IO TangoError
+
+foreign import capi "c_tango.h tango_stop_poll_attribute"
+  tango_stop_poll_attribute :: DeviceProxyPtr -> CString -> IO TangoError

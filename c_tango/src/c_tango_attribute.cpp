@@ -570,3 +570,29 @@ static void convert_attr_query(Tango::AttributeInfoEx &tango_attr_info, Attribut
   }
   attr_info->enum_labels_count = static_cast<uint16_t>(enum_label_count);
 }
+
+ErrorStack * tango_poll_attribute(void *db_proxy, char const *cmd_name, int polling_period)
+{
+  try
+  {
+    static_cast<Tango::DeviceProxy *>(db_proxy)->poll_attribute(cmd_name, polling_period);
+  }
+  catch (Tango::DevFailed &tango_exception)
+  {
+    return tango_translate_exception(tango_exception);
+  }
+  return 0;
+}
+
+ErrorStack * tango_stop_poll_attribute(void *db_proxy, char const *cmd_name)
+{
+  try
+  {
+    static_cast<Tango::DeviceProxy *>(db_proxy)->stop_poll_attribute(cmd_name);
+  }
+  catch (Tango::DevFailed &tango_exception)
+  {
+    return tango_translate_exception(tango_exception);
+  }
+  return 0;
+}

@@ -1,0 +1,3 @@
+Interesting links:
+
+- [[https://www.esrf.fr/computing/cs/tango/tango_doc/kernel_doc/cpp_doc/classTango_1_1DeviceProxy.html][DeviceProxy C++ API reference]]

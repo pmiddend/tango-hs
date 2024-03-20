@@ -354,6 +354,54 @@ void tango_free_DbData(DbData *db_data)
   }
 }
 
+class HaskellCallBack : public Tango::CallBack
+{
+public:
+  HaskellCallBack(void (*callback_fn)(void *, char const *, bool)) : callback_fn{callback_fn} {}
+
+  void push_event(Tango::EventData *ed)
+  {
+    this->callback_fn(ed->device, ed->event.c_str(), ed->err);
+  }
+
+private:
+  void (*callback_fn)(void *, char const *, bool);
+};
+
+void *tango_create_event_callback(void (*callback_fn)(void *, char const *, bool))
+{
+  return new HaskellCallBack(callback_fn);
+}
+
+void tango_free_event_callback(void *cb) { delete static_cast<HaskellCallBack *>(cb); }
+
+int tango_subscribe_event(
+    void *dev_proxy,
+    char const *attribute,
+    TangoEventType event_type,
+    void *event_callback,
+    bool stateless)
+{
+  try
+  {
+    return static_cast<Tango::DeviceProxy *>(dev_proxy)->subscribe_event(
+        attribute,
+        static_cast<Tango::EventType>(event_type),
+        static_cast<HaskellCallBack *>(event_callback),
+        stateless);
+  }
+  catch (Tango::DevFailed const &e)
+  {
+    std::cerr << "caught exception in subscribe_event: " << e.errors[0].reason << "\n";
+    throw e;
+  }
+}
+
+void tango_unsubscribe_event(void *dev_proxy, int event_id)
+{
+  static_cast<Tango::DeviceProxy *>(dev_proxy)->unsubscribe_event(event_id);
+}
+
 static void convert_property_reading(Tango::DbDatum &tango_prop, DbDatum *prop)
 {
   // allocate property name

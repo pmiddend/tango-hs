@@ -1,8 +1,10 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (bracket)
 import Control.Monad (forM_, void, when)
 import Data.Text (unpack)
@@ -15,7 +17,7 @@ import Foreign.Marshal (free, peekArray, with)
 import Foreign.Marshal.Array (withArray)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
-import Tango
+import Tango.Common
   ( DeviceProxyPtr,
     HaskellAttributeData (HaskellAttributeData),
     HaskellAttributeDataList (..),
@@ -30,8 +32,10 @@ import Tango
     HaskellTangoAttributeData (..),
     HaskellTangoCommandData (HaskellCommandCString, HaskellCommandDouble),
     HaskellTangoDataType (HaskellDevDouble, HaskellDevString),
+    HaskellTangoEventType (HaskellEventTypeChangeEvent),
     HaskellTangoVarArray (HaskellTangoVarArray, varArrayLength, varArrayValues),
     Timeval (Timeval),
+    createEventCallbackWrapper,
     devSourceFromInt,
     devSourceToInt,
     tangoCommandData,
@@ -39,6 +43,7 @@ import Tango
     tango_command_list_query,
     tango_create_database_proxy,
     tango_create_device_proxy,
+    tango_create_event_callback,
     tango_delete_database_proxy,
     tango_delete_device_proxy,
     tango_free_AttributeData,
@@ -58,11 +63,14 @@ import Tango
     -- tango_is_locked_by_me,
     tango_lock,
     tango_locking_status,
+    tango_poll_attribute,
     tango_read_attribute,
     tango_read_attributes,
     tango_set_source,
     tango_set_timeout_millis,
+    tango_subscribe_event,
     tango_unlock,
+    tango_unsubscribe_event,
     tango_write_attribute,
   )
 import TangoHL (withDeviceProxy)
@@ -83,7 +91,26 @@ checkResult action = do
     errorLines <- traverse formatDevFailed stackItems
     fail ("error in result: " <> unlines errorLines)
 
-main = withDeviceProxy "sys/tg_test/1" $ \proxyPtr -> do
+myEventCallback :: Ptr () -> CString -> Bool -> IO ()
+myEventCallback deviceProxyPtr eventType stateless = do
+  eventType' <- peekCString eventType
+  putStrLn $ "callback called: " <> show eventType'
+
+main = withDeviceProxy "sys/tg_test/1" \proxyPtr -> do
+  myEventCallback' <- createEventCallbackWrapper myEventCallback
+  myEventCallback'' <- tango_create_event_callback myEventCallback'
+  putStrLn "created event callback"
+  withCString "long64_scalar" \attributeName -> do
+    checkResult (tango_poll_attribute proxyPtr attributeName 2500)
+    eventId <- tango_subscribe_event proxyPtr attributeName (fromIntegral $ fromEnum HaskellEventTypeChangeEvent) myEventCallback'' 0
+    putStrLn $ "registered, event ID " <> show eventId
+    threadDelay (5 * 1000 * 1000)
+    putStrLn "unregistering now"
+    tango_unsubscribe_event proxyPtr eventId
+    putStrLn "done"
+    threadDelay (5 * 1000 * 1000)
+
+main3 = withDeviceProxy "sys/tg_test/1" $ \proxyPtr -> do
   let stringCommandName = "DevString"
       stringCommandInput = "foobar"
   withCString stringCommandInput $ \cmdInput -> with (HaskellCommandData HaskellDevString (HaskellCommandCString cmdInput)) $ \arginPtr ->
@@ -144,12 +171,12 @@ main2 = do
     putStrLn "<= unlocking"
     checkResult (tango_unlock proxyPtr)
 
-    alloca $ \boolPtr -> do
-      putStrLn "<= checking lock status"
-      checkResult (tango_is_locked proxyPtr boolPtr)
-      lockStatus <- peek boolPtr
-      putStrLn ("=> lock status: " <> show lockStatus)
-      when lockStatus (error "we unlocked the device and then asked for the lock status and it was true - how can that be?")
+    -- alloca $ \boolPtr -> do
+    --   putStrLn "<= checking lock status"
+    --   checkResult (tango_is_locked proxyPtr boolPtr)
+    --   lockStatus <- peek boolPtr
+    --   putStrLn ("=> lock status: " <> show lockStatus)
+    --   when lockStatus (error "we unlocked the device and then asked for the lock status and it was true - how can that be?")
 
     putStrLn "<= retrieving string locking status"
     alloca $ \strPtrPtr -> do
