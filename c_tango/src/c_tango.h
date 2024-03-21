@@ -522,6 +522,8 @@ extern "C"
   void tango_server_set_status(device_instance_ptr, char *);
   void tango_server_set_state(device_instance_ptr, int);
   void tango_server_start();
+  void tango_server_store_user_data(device_instance_ptr, void *);
+  void *tango_server_get_user_data(device_instance_ptr);
 
   void tango_server_add_property(char *);
   char const *tango_server_read_property(device_instance_ptr, char *);

@@ -163,6 +163,10 @@ public:
   virtual void init_device();
   virtual void always_executed_hook();
 
+  void store_user_data(void *user_data) { this->user_data = user_data; }
+
+  void *get_user_data() { return this->user_data; }
+
   virtual void read_attr_hardware(std::vector<long> &attr_list);
   virtual void write_attr_hardware(std::vector<long> &attr_list);
 
@@ -177,20 +181,9 @@ public:
 private:
   JustOneAttributeClass &parent_class;
   std::unordered_map<std::string, std::string> properties_values;
+  void *user_data;
   // static JustOneAttribute *_instance;
 };
-
-// JustOneAttribute *JustOneAttribute::_instance = 0;
-
-// JustOneAttribute *JustOneAttribute::instance()
-// {
-//   if (_instance == 0)
-//   {
-//     std::cerr << "Class " << ::this_device_name << " is not initialised!" << std::endl;
-//     exit(-1);
-//   }
-//   return _instance;
-// }
 
 class haskellAttrib : public Tango::Attr
 {
@@ -461,7 +454,8 @@ void JustOneAttributeClass::create_static_attribute_list(std::vector<Tango::Attr
 JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s)
     : TANGO_BASE_CLASS(cl, s, "description", initial_state, initial_status),
       parent_class(static_cast<JustOneAttributeClass &>(*cl)),
-      properties_values{}
+      properties_values{},
+      user_data{0}
 {
   init_device();
 
@@ -671,4 +665,14 @@ void tango_server_add_property(char *property_name)
 char const *tango_server_read_property(device_instance_ptr instance, char *property_name)
 {
   return static_cast<JustOneAttribute *>(instance)->get_property_value(property_name).c_str();
+}
+
+void tango_server_store_user_data(device_instance_ptr ptr, void *data)
+{
+  static_cast<JustOneAttribute *>(ptr)->store_user_data(data);
+}
+
+void *tango_server_get_user_data(device_instance_ptr ptr)
+{
+  return static_cast<JustOneAttribute *>(ptr)->get_user_data();
 }

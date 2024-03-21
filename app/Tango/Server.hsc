@@ -105,3 +105,9 @@ foreign import capi "c_tango.h tango_server_add_property"
 
 foreign import capi "c_tango.h tango_server_read_property"
   tango_server_read_property :: DeviceInstancePtr -> CString -> IO CString
+
+foreign import capi "c_tango.h tango_server_store_user_data"
+  tango_server_store_user_data :: DeviceInstancePtr -> Ptr () -> IO ()
+
+foreign import capi "c_tango.h tango_server_get_user_data"
+  tango_server_get_user_data :: DeviceInstancePtr -> IO (Ptr ())
