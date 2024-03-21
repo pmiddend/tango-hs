@@ -3,6 +3,8 @@
 
 namespace
 {
+std::string this_device_name{"HaskellDevice"};
+
 // Copy of the Tango definition in order to use std::string for more
 // memory-safety (not strictly necessary, this thing)
 struct AttributeDefinitionCpp
@@ -10,14 +12,15 @@ struct AttributeDefinitionCpp
   std::string name;
   TangoDataType data_type;
   AttrWriteType write_type;
-  void (*set_callback)(void *);
-  void (*get_callback)(void *);
+  void (*set_callback)(device_instance_ptr, void *);
+  void (*get_callback)(device_instance_ptr, void *);
 };
 
 // This is global due to our "one device per executable" convention, and stores the initial state (and can be set from a normal global C function now)
 Tango::DevState initial_state;
 std::string initial_status;
 void (*global_finalizer_callback)(void *);
+void (*device_init_callback)(device_instance_ptr);
 
 std::vector<AttributeDefinitionCpp> attribute_definitions;
 
@@ -28,7 +31,7 @@ struct CommandDefinitionCpp
   std::string command_name;
   TangoDataType in_type;
   TangoDataType out_type;
-  void *(*execute_callback)(void *);
+  void *(*execute_callback)(device_instance_ptr, void *);
 };
 
 std::vector<CommandDefinitionCpp> command_definitions;
@@ -43,7 +46,7 @@ public:
       const char *in_desc,
       const char *out_desc,
       Tango::DispLevel level,
-      void *(*execute_callback)(void *))
+      void *(*execute_callback)(device_instance_ptr, void *))
       : Command(cmd_name, in, out, in_desc, out_desc, level), execute_callback{execute_callback}
   {
   }
@@ -52,7 +55,7 @@ public:
   {
     if (this->get_in_type() == Tango::DEV_VOID && this->get_out_type() == Tango::DEV_VOID)
     {
-      this->execute_callback(0);
+      this->execute_callback(dev, 0);
       return new CORBA::Any();
     }
     else if (this->get_in_type() == Tango::DEV_LONG64 && this->get_out_type() == Tango::DEV_VOID)
@@ -60,7 +63,7 @@ public:
       Tango::DevLong64 argin;
       extract(in_any, argin);
 
-      this->execute_callback(&argin);
+      this->execute_callback(dev, &argin);
 
       // Return value for void
       return new CORBA::Any();
@@ -70,7 +73,7 @@ public:
       Tango::DevDouble argin;
       extract(in_any, argin);
 
-      this->execute_callback(&argin);
+      this->execute_callback(dev, &argin);
 
       // Return value for void
       return new CORBA::Any();
@@ -80,14 +83,14 @@ public:
       Tango::DevString argin;
       extract(in_any, argin);
 
-      this->execute_callback(argin);
+      this->execute_callback(dev, argin);
 
       // Return value for void
       return new CORBA::Any();
     }
     else if (this->get_in_type() == Tango::DEV_VOID && this->get_out_type() == Tango::DEV_LONG64)
     {
-      void *result = this->execute_callback(0);
+      void *result = this->execute_callback(dev, 0);
 
       Tango::DevLong64 const number = *static_cast<Tango::DevLong64 *>(result);
       ::global_finalizer_callback(result);
@@ -96,7 +99,7 @@ public:
     }
     else if (this->get_in_type() == Tango::DEV_VOID && this->get_out_type() == Tango::DEV_DOUBLE)
     {
-      void *result = this->execute_callback(0);
+      void *result = this->execute_callback(dev, 0);
 
       Tango::DevDouble const number = *static_cast<Tango::DevDouble *>(result);
       ::global_finalizer_callback(result);
@@ -105,7 +108,7 @@ public:
     }
     else if (this->get_in_type() == Tango::DEV_VOID && this->get_out_type() == Tango::DEV_STRING)
     {
-      char *const result = static_cast<char *>(this->execute_callback(0));
+      char *const result = static_cast<char *>(this->execute_callback(dev, 0));
       size_t const len = strlen(result);
 
       char *copy = new char[len + 1];
@@ -121,7 +124,7 @@ public:
   bool is_allowed(Tango::DeviceImpl *dev, const CORBA::Any &any) { return true; }
 
 private:
-  void *(*execute_callback)(void *);
+  void *(*execute_callback)(device_instance_ptr, void *);
 };
 
 class JustOneAttributeClass : public Tango::DeviceClass
@@ -151,7 +154,7 @@ private:
 class JustOneAttribute : public TANGO_BASE_CLASS
 {
 public:
-  static JustOneAttribute *instance();
+  // static JustOneAttribute *instance();
 
   JustOneAttribute(Tango::DeviceClass *cl, const char *s);
   ~JustOneAttribute();
@@ -174,20 +177,20 @@ public:
 private:
   JustOneAttributeClass &parent_class;
   std::unordered_map<std::string, std::string> properties_values;
-  static JustOneAttribute *_instance;
+  // static JustOneAttribute *_instance;
 };
 
-JustOneAttribute *JustOneAttribute::_instance = 0;
+// JustOneAttribute *JustOneAttribute::_instance = 0;
 
-JustOneAttribute *JustOneAttribute::instance()
-{
-  if (_instance == 0)
-  {
-    std::cerr << "Class JustOneAttribute is not initialised!" << std::endl;
-    exit(-1);
-  }
-  return _instance;
-}
+// JustOneAttribute *JustOneAttribute::instance()
+// {
+//   if (_instance == 0)
+//   {
+//     std::cerr << "Class " << ::this_device_name << " is not initialised!" << std::endl;
+//     exit(-1);
+//   }
+//   return _instance;
+// }
 
 class haskellAttrib : public Tango::Attr
 {
@@ -211,19 +214,19 @@ public:
     if (def.data_type == DEV_LONG64)
     {
       TangoDevLong64 int_value;
-      def.get_callback(&int_value);
+      def.get_callback(dev, &int_value);
       att.set_value(&int_value);
     }
     else if (def.data_type == DEV_DOUBLE)
     {
       Tango::DevDouble value;
-      def.get_callback(&value);
+      def.get_callback(dev, &value);
       att.set_value(&value);
     }
     else if (def.data_type == DEV_BOOLEAN)
     {
       bool value;
-      def.get_callback(&value);
+      def.get_callback(dev, &value);
       att.set_value(&value);
     }
     else if (def.data_type == DEV_STRING)
@@ -233,7 +236,7 @@ public:
       // be: We allocate a C string on the Haskell side, and get the pointer
       // here
       char *haskell_string;
-      def.get_callback(&haskell_string);
+      def.get_callback(dev, &haskell_string);
 
       // We also need a container for this C string, which we allocate on the
       // heap here.
@@ -269,25 +272,25 @@ public:
     {
       Tango::DevLong64 w_val;
       att.get_write_value(w_val);
-      def.set_callback(&w_val);
+      def.set_callback(dev, &w_val);
     }
     else if (def.data_type == DEV_DOUBLE)
     {
       Tango::DevDouble w_val;
       att.get_write_value(w_val);
-      def.set_callback(&w_val);
+      def.set_callback(dev, &w_val);
     }
     else if (def.data_type == DEV_BOOLEAN)
     {
       Tango::DevBoolean w_val;
       att.get_write_value(w_val);
-      def.set_callback(&w_val);
+      def.set_callback(dev, &w_val);
     }
     else if (def.data_type == DEV_STRING)
     {
       Tango::DevString w_val;
       att.get_write_value(w_val);
-      def.set_callback(&w_val);
+      def.set_callback(dev, &w_val);
     }
   }
 
@@ -354,6 +357,7 @@ Tango::DbDatum JustOneAttributeClass::get_default_device_property(std::string &p
 
 JustOneAttributeClass::JustOneAttributeClass(std::string &s) : Tango::DeviceClass(s)
 {
+  std::cout << "JustOneAttributeClass(" << s << ")\n";
   TANGO_LOG_INFO << "Entering JustOneAttributeClass constructor" << std::endl;
   TANGO_LOG_INFO << "Leaving JustOneAttributeClass constructor" << std::endl;
 }
@@ -459,7 +463,6 @@ JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s)
       parent_class(static_cast<JustOneAttributeClass &>(*cl)),
       properties_values{}
 {
-  _instance = this;
   init_device();
 
   Tango::DbData dev_prop;
@@ -495,6 +498,8 @@ JustOneAttribute::JustOneAttribute(Tango::DeviceClass *cl, const char *s)
       this->properties_values[prop.name] = final_string;
     }
   }
+
+  ::device_init_callback(this);
 }
 
 JustOneAttribute::~JustOneAttribute() { delete_device(); }
@@ -538,7 +543,11 @@ void JustOneAttribute::add_dynamic_commands() {}
 // }
 } // namespace
 
-void Tango::DServer::class_factory() { add_class(JustOneAttributeClass::init("JustOneAttribute")); }
+void Tango::DServer::class_factory()
+{
+  std::cout << "class_factory: adding " << ::this_device_name << "\n";
+  add_class(JustOneAttributeClass::init(::this_device_name.c_str()));
+}
 
 void tango_server_add_attribute_definition(AttributeDefinition *definition)
 {
@@ -567,8 +576,10 @@ int tango_server_init(
     char *argv[],
     void (*global_finalizer_callback)(void *),
     char *initial_status,
-    int _initial_state)
+    int _initial_state,
+    void (*device_init_callback)(device_instance_ptr))
 {
+  std::cout << "in tango_server_init" << std::endl;
   // Technically bad, since we're keeping memory for this initial
   // string indefinitely (we could clear it at some point), but it's
   // much more handy than keeping the externally delivered char
@@ -576,12 +587,15 @@ int tango_server_init(
   ::initial_status = std::string{initial_status};
   ::initial_state = static_cast<Tango::DevState>(_initial_state);
   ::global_finalizer_callback = global_finalizer_callback;
+  ::this_device_name = argv[0];
+  ::device_init_callback = device_init_callback;
 
   Tango::Util *tg;
   try
   {
     // Initialise the device server
     //----------------------------------------
+    std::cout << "Tango::Util::init(" << argc << "," << argv[0] << ")\n";
     tg = Tango::Util::init(argc, argv);
 
     // Create the device server singleton
@@ -638,15 +652,15 @@ void tango_server_start()
   }
 }
 
-void tango_server_set_status(char *new_status)
+void tango_server_set_status(device_instance_ptr instance, char *new_status)
 {
   // Memeory-wise, this is fine, since set_status gets a std::string.
-  JustOneAttribute::instance()->set_status(new_status);
+  static_cast<JustOneAttribute *>(instance)->set_status(new_status);
 }
 
-void tango_server_set_state(int const new_state)
+void tango_server_set_state(device_instance_ptr instance, int const new_state)
 {
-  JustOneAttribute::instance()->set_state(static_cast<Tango::DevState>(new_state));
+  static_cast<JustOneAttribute *>(instance)->set_state(static_cast<Tango::DevState>(new_state));
 }
 
 void tango_server_add_property(char *property_name)
@@ -654,7 +668,7 @@ void tango_server_add_property(char *property_name)
   ::properties.push_back(std::string{property_name});
 }
 
-char const *tango_server_read_property(char *property_name)
+char const *tango_server_read_property(device_instance_ptr instance, char *property_name)
 {
-  return JustOneAttribute::instance()->get_property_value(property_name).c_str();
+  return static_cast<JustOneAttribute *>(instance)->get_property_value(property_name).c_str();
 }

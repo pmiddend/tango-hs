@@ -491,13 +491,15 @@ extern "C"
       void *dev_proxy, char const *attribute, TangoEventType, void *event_callback, bool);
   void tango_unsubscribe_event(void *dev_proxy, int event_id);
 
+  typedef void *device_instance_ptr;
+
   typedef struct
   {
     char const *attribute_name;
     TangoDataType data_type;
     AttrWriteType write_type;
-    void (*set_callback)(void *);
-    void (*get_callback)(void *);
+    void (*set_callback)(device_instance_ptr, void *);
+    void (*get_callback)(device_instance_ptr, void *);
   } AttributeDefinition;
 
   typedef struct
@@ -505,7 +507,7 @@ extern "C"
     char const *command_name;
     TangoDataType in_type;
     TangoDataType out_type;
-    void *(*execute_callback)(void *);
+    void *(*execute_callback)(device_instance_ptr, void *);
   } CommandDefinition;
 
   void tango_server_add_attribute_definition(AttributeDefinition *);
@@ -515,13 +517,14 @@ extern "C"
       char *argv[],
       void (*global_finalizer_callback)(void *),
       char *initial_status,
-      int initial_state);
-  void tango_server_set_status(char *);
-  void tango_server_set_state(int);
+      int initial_state,
+      void (*device_init_callback)(device_instance_ptr));
+  void tango_server_set_status(device_instance_ptr, char *);
+  void tango_server_set_state(device_instance_ptr, int);
   void tango_server_start();
 
   void tango_server_add_property(char *);
-  char const *tango_server_read_property(char *);
+  char const *tango_server_read_property(device_instance_ptr, char *);
 
 #ifdef __cplusplus
 } /* extern "C" */

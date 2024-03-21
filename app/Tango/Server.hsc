@@ -18,6 +18,9 @@ module Tango.Server
     createGlobalFinalizer,
     tango_server_add_property,
     tango_server_read_property,
+    createDeviceInitCallback,
+    DeviceInitCallback,
+    DeviceInstancePtr,
     tango_server_set_state,
     createFnWrapper,
     HaskellAttributeDefinition (..),
@@ -44,26 +47,34 @@ foreign import ccall "wrapper" createGlobalFinalizer :: GlobalFinalizer -> IO (F
 
 foreign import ccall "wrapper" createFnWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
 
+type DeviceInstancePtr = Ptr ()
+
+type DeviceInitCallback = DeviceInstancePtr -> IO ()
+
+foreign import ccall "wrapper" createDeviceInitCallback :: DeviceInitCallback -> IO (FunPtr DeviceInitCallback)
+
 foreign import capi "c_tango.h tango_server_init"
-  tango_server_init :: CInt -> Ptr CString -> FunPtr GlobalFinalizer -> CString -> CInt -> IO ()
+  tango_server_init :: CInt -> Ptr CString -> FunPtr GlobalFinalizer -> CString -> CInt -> FunPtr DeviceInitCallback -> IO ()
 
 foreign import capi "c_tango.h tango_server_start"
   tango_server_start :: IO ()
-
-type TangoDevLong64 = CLong
 
 data HaskellAttributeDefinition = HaskellAttributeDefinition
   { attribute_name :: !CString,
     data_type :: !HaskellTangoDataType,
     write_type :: HaskellAttrWriteType,
-    set_callback :: FunPtr (Ptr () -> IO ()),
-    get_callback :: FunPtr (Ptr () -> IO ())
+    set_callback :: FunPtr (DeviceInstancePtr -> Ptr () -> IO ()),
+    get_callback :: FunPtr (DeviceInstancePtr -> Ptr () -> IO ())
   }
   deriving (Show, Generic)
 
 instance GStorable HaskellAttributeDefinition
 
-type CommandCallback = Ptr () -> IO (Ptr ())
+type CommandCallbackInputPtr = Ptr ()
+
+type CommandCallbackOutputPtr = Ptr ()
+
+type CommandCallback = DeviceInstancePtr -> CommandCallbackInputPtr -> IO CommandCallbackOutputPtr
 
 foreign import ccall "wrapper" createCommandCallback :: CommandCallback -> IO (FunPtr CommandCallback)
 
@@ -84,13 +95,13 @@ foreign import capi "c_tango.h tango_server_add_command_definition"
   tango_server_add_command_definition :: Ptr HaskellCommandDefinition -> IO ()
 
 foreign import capi "c_tango.h tango_server_set_status"
-  tango_server_set_status :: CString -> IO ()
+  tango_server_set_status :: DeviceInstancePtr -> CString -> IO ()
 
 foreign import capi "c_tango.h tango_server_set_state"
-  tango_server_set_state :: CInt -> IO ()
+  tango_server_set_state :: DeviceInstancePtr -> CInt -> IO ()
 
 foreign import capi "c_tango.h tango_server_add_property"
   tango_server_add_property :: CString -> IO ()
 
 foreign import capi "c_tango.h tango_server_read_property"
-  tango_server_read_property :: CString -> IO CString
+  tango_server_read_property :: DeviceInstancePtr -> CString -> IO CString

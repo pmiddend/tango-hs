@@ -7,7 +7,9 @@ module TangoHL
     readStringAttribute,
     writeIntAttribute,
     commandInOutVoid,
+    newDeviceProxy,
     readIntAttribute,
+    tangoUrlFromText,
   )
 where
 
@@ -75,6 +77,18 @@ checkResult action = do
     stackItems <- UnliftForeign.peekArray (fromIntegral (errorStackLength errorStack)) (errorStackSequence errorStack)
     formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse ((pack <$>) . UnliftForeign.peekCString)) stackItems
     throw (TangoException formattedStackItems)
+
+newtype TangoUrl = TangoUrl {getTangoUrl :: Text}
+
+tangoUrlFromText :: Text -> TangoUrl
+tangoUrlFromText = TangoUrl
+
+newDeviceProxy :: forall m. (UnliftIO.MonadUnliftIO m) => TangoUrl -> m DeviceProxyPtr
+newDeviceProxy (TangoUrl url) =
+  liftIO $ alloca $ \proxyPtrPtr -> do
+    withCString (unpack url) $ \proxyName -> do
+      checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
+      peek proxyPtrPtr
 
 withDeviceProxy :: forall m a. (UnliftIO.MonadUnliftIO m) => Text -> (DeviceProxyPtr -> m a) -> m a
 withDeviceProxy proxyAddress =

@@ -555,7 +555,7 @@ ErrorStack *tango_poll_command(void *db_proxy, char const *cmd_name, int polling
   return 0;
 }
 
-ErrorStack * tango_stop_poll_command(void *db_proxy, char const *cmd_name)
+ErrorStack *tango_stop_poll_command(void *db_proxy, char const *cmd_name)
 {
   try
   {

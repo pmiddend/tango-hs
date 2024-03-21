@@ -571,7 +571,7 @@ static void convert_attr_query(Tango::AttributeInfoEx &tango_attr_info, Attribut
   attr_info->enum_labels_count = static_cast<uint16_t>(enum_label_count);
 }
 
-ErrorStack * tango_poll_attribute(void *db_proxy, char const *cmd_name, int polling_period)
+ErrorStack *tango_poll_attribute(void *db_proxy, char const *cmd_name, int polling_period)
 {
   try
   {
@@ -584,7 +584,7 @@ ErrorStack * tango_poll_attribute(void *db_proxy, char const *cmd_name, int poll
   return 0;
 }
 
-ErrorStack * tango_stop_poll_attribute(void *db_proxy, char const *cmd_name)
+ErrorStack *tango_stop_poll_attribute(void *db_proxy, char const *cmd_name)
 {
   try
   {
