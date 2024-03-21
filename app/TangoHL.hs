@@ -9,7 +9,9 @@ module TangoHL
     commandInOutVoid,
     newDeviceProxy,
     readIntAttribute,
+    readDoubleAttribute,
     tangoUrlFromText,
+    DeviceProxyPtr,
   )
 where
 
@@ -44,7 +46,7 @@ import Tango.Common
     HaskellDataQuality (..),
     HaskellDevFailed (HaskellDevFailed),
     HaskellErrorStack (errorStackLength, errorStackSequence),
-    HaskellTangoAttributeData (HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStringArray),
+    HaskellTangoAttributeData (HaskellAttributeDataDoubleArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStringArray),
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
     HaskellTangoDevState,
@@ -63,7 +65,7 @@ import Tango.Common
 import Text.Show (Show, show)
 import qualified UnliftIO as UnliftIO
 import qualified UnliftIO.Foreign as UnliftForeign
-import Prelude (Double, Float, error, fromIntegral)
+import Prelude (Double, Float, error, fromIntegral, realToFrac)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
@@ -78,7 +80,7 @@ checkResult action = do
     formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse ((pack <$>) . UnliftForeign.peekCString)) stackItems
     throw (TangoException formattedStackItems)
 
-newtype TangoUrl = TangoUrl {getTangoUrl :: Text}
+newtype TangoUrl = TangoUrl Text
 
 tangoUrlFromText :: Text -> TangoUrl
 tangoUrlFromText = TangoUrl
@@ -152,7 +154,23 @@ readIntAttribute proxyPtr attributeNameHaskell =
           pure (fromIntegral firstLong)
         _ -> do
           tango_free_AttributeData haskellAttributeDataPtr
-          error "invalid type of attribute, not a string"
+          error "invalid type of attribute, not an int"
+
+readDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Double
+readDoubleAttribute proxyPtr attributeNameHaskell =
+  -- FIXME: This is 99% the same as readStringAttribute!
+  liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
+    alloca $ \haskellAttributeDataPtr -> do
+      checkResult (tango_read_attribute proxyPtr attributeName haskellAttributeDataPtr)
+      haskellAttributeData <- peek haskellAttributeDataPtr
+      case tangoAttributeData haskellAttributeData of
+        HaskellAttributeDataDoubleArray (HaskellTangoVarArray {varArrayValues}) -> do
+          firstValue <- peek varArrayValues
+          tango_free_AttributeData haskellAttributeDataPtr
+          pure (realToFrac firstValue)
+        _ -> do
+          tango_free_AttributeData haskellAttributeDataPtr
+          error "invalid type of attribute, not a double"
 
 commandInOutVoid :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m ()
 commandInOutVoid proxyPtr commandName =

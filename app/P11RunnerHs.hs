@@ -3,6 +3,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, readMVar)
+import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text, pack, strip, unpack)
 import Data.Text.IO (putStrLn)
@@ -20,7 +22,8 @@ import Tango.Common
     HaskellTangoDevState (Unknown),
   )
 import Tango.Server
-  ( DeviceInitCallback,
+  ( CommandCallback,
+    DeviceInitCallback,
     DeviceInstancePtr,
     HaskellAttributeDefinition (..),
     HaskellCommandDefinition (..),
@@ -36,7 +39,7 @@ import Tango.Server
     tango_server_set_status,
     tango_server_start,
   )
-import TangoHL (newDeviceProxy, tangoUrlFromText)
+import TangoHL (DeviceProxyPtr, newDeviceProxy, readDoubleAttribute, tangoUrlFromText)
 import qualified UnliftIO
 import UnliftIO.Foreign (peekCString, with, withArray, withCString)
 import Prelude hiding (putStrLn)
@@ -50,10 +53,19 @@ newtype ServerStatus = ServerStatus Text
 withCStringFromText :: (UnliftIO.MonadUnliftIO m) => Text -> (CString -> m a) -> m a
 withCStringFromText t = withCString (unpack t)
 
-data TangoServerCommand = ServerCommandVoidVoid (DeviceInstancePtr -> IO ())
+newtype CommandName = CommandName Text
 
-prepareForMeasurement :: DeviceInstancePtr -> IO ()
-prepareForMeasurement _instance = putStrLn "lol"
+data TangoServerCommand = ServerCommandVoidVoid CommandName (DeviceInstancePtr -> IO ())
+
+data DeviceData = DeviceData
+  { deviceDataDetectorTower :: DeviceProxyPtr
+  }
+
+prepareForMeasurement :: MVar DeviceData -> DeviceInstancePtr -> IO ()
+prepareForMeasurement data' _instance = do
+  readData <- readMVar data'
+  double <- readDoubleAttribute (deviceDataDetectorTower readData) "DetectorDistanceLaser"
+  putStrLn $ "laser distance: " <> pack (show double)
 
 tangoServerInit ::
   (UnliftIO.MonadUnliftIO m) =>
@@ -68,24 +80,42 @@ tangoServerInit propertyNames (ServerStatus initialStatus) initialState commands
   args <- liftIO getArgs
   freeFinalizerWrapped <- liftIO (createGlobalFinalizer free)
   deviceInitCallbackWrapped <- liftIO (createDeviceInitCallback deviceInitCallback)
-  let voidWrapped :: (DeviceInstancePtr -> IO ()) -> (DeviceInstancePtr -> Ptr () -> IO (Ptr ()))
+  let voidWrapped :: (DeviceInstancePtr -> IO ()) -> CommandCallback
       voidWrapped voidFunction instance' _ptrToBeIgnored = do
         voidFunction instance'
         pure nullPtr
-  prepareForMeasurementWrapped <- liftIO (createCommandCallback (voidWrapped prepareForMeasurement))
-  withCString "prepare_for_measurement" \commandName ->
-    with
-      ( HaskellCommandDefinition
-          commandName
-          HaskellDevVoid
-          HaskellDevVoid
-          prepareForMeasurementWrapped
-      )
-      \commandDefPtr ->
-        liftIO
-          ( tango_server_add_command_definition
-              commandDefPtr
-          )
+      extractCommandName :: TangoServerCommand -> Text
+      extractCommandName (ServerCommandVoidVoid (CommandName n) _) = n
+      wrapCommand :: TangoServerCommand -> CommandCallback
+      wrapCommand (ServerCommandVoidVoid _name f) = voidWrapped f
+      withConvertedCommand tsc f = do
+        wrappedCommandCallback <- liftIO (createCommandCallback (wrapCommand tsc))
+        withCString (unpack (extractCommandName tsc)) \commandNameC ->
+          with
+            ( HaskellCommandDefinition
+                commandNameC
+                HaskellDevVoid
+                HaskellDevVoid
+                wrappedCommandCallback
+            )
+            f
+  forM_ commands \haskellCommand -> withConvertedCommand haskellCommand (liftIO . tango_server_add_command_definition)
+  -- commandsWrapped <- traverse () commands
+  -- forM_ commands \haskellCommand -> do
+  --   wrappedCommandCallback <- liftIO (createCommandCallback (wrapCommand haskellCommand))
+  --   withCString (unpack commandName) \commandNameC ->
+  --     with
+  --       ( HaskellCommandDefinition
+  --           commandNameC
+  --           HaskellDevVoid
+  --           HaskellDevVoid
+  --           prepareForMeasurementWrapped
+  --       )
+  --       \commandDefPtr ->
+  --         liftIO
+  --           ( tango_server_add_command_definition
+  --               commandDefPtr
+  --           )
   case args of
     [] -> pure (Left "cannot initialize device server, missing first argument (instance name)")
     (instanceName : _) -> do
@@ -119,22 +149,24 @@ tangoReadProperty instance' (PropertyName n) = do
 propDetectorTowerIdentifier :: PropertyName
 propDetectorTowerIdentifier = PropertyName "detector_tower_identifier"
 
-initCallback :: DeviceInstancePtr -> IO ()
-initCallback instance' = do
+initCallback :: MVar DeviceData -> DeviceInstancePtr -> IO ()
+initCallback deviceData instance' = do
   putStrLn "in init callback, connecting to detector tower"
   detectorTowerIdentifier <- tangoReadProperty instance' propDetectorTowerIdentifier
   detectorTowerProxy <- newDeviceProxy (tangoUrlFromText detectorTowerIdentifier)
+  putMVar deviceData (DeviceData detectorTowerProxy)
   putStrLn "done"
 
 main :: IO ()
 main = do
+  deviceData <- newEmptyMVar
   initedServerEither <-
     tangoServerInit
       [propDetectorTowerIdentifier]
       (ServerStatus "")
       Unknown
-      [ServerCommandVoidVoid prepareForMeasurement]
-      initCallback
+      [ServerCommandVoidVoid (CommandName "prepare_for_measurement") (prepareForMeasurement deviceData)]
+      (initCallback deviceData)
   case initedServerEither of
     Left e -> putStrLn ("error initializing: " <> e)
     Right initedServer -> tangoServerStart initedServer
