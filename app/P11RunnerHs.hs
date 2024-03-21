@@ -39,23 +39,10 @@ import Tango.Server
     tango_server_set_status,
     tango_server_start,
   )
-import TangoHL (DeviceProxyPtr, newDeviceProxy, readDoubleAttribute, tangoUrlFromText)
+import TangoHL (CommandName (CommandName), DeviceProxyPtr, PropertyName (PropertyName), ServerStatus (ServerStatus), TangoServerCommand (ServerCommandVoidVoid), newDeviceProxy, readDoubleAttribute, tangoReadProperty, tangoServerInit, tangoServerStart, tangoUrlFromText)
 import qualified UnliftIO
 import UnliftIO.Foreign (peekCString, with, withArray, withCString)
 import Prelude hiding (putStrLn)
-
-data InitedServer = InitedServer
-
-newtype PropertyName = PropertyName {getPropertyName :: Text}
-
-newtype ServerStatus = ServerStatus Text
-
-withCStringFromText :: (UnliftIO.MonadUnliftIO m) => Text -> (CString -> m a) -> m a
-withCStringFromText t = withCString (unpack t)
-
-newtype CommandName = CommandName Text
-
-data TangoServerCommand = ServerCommandVoidVoid CommandName (DeviceInstancePtr -> IO ())
 
 data DeviceData = DeviceData
   { deviceDataDetectorTower :: DeviceProxyPtr
@@ -66,85 +53,6 @@ prepareForMeasurement data' _instance = do
   readData <- readMVar data'
   double <- readDoubleAttribute (deviceDataDetectorTower readData) "DetectorDistanceLaser"
   putStrLn $ "laser distance: " <> pack (show double)
-
-tangoServerInit ::
-  (UnliftIO.MonadUnliftIO m) =>
-  [PropertyName] ->
-  ServerStatus ->
-  HaskellTangoDevState ->
-  [TangoServerCommand] ->
-  DeviceInitCallback ->
-  m (Either Text InitedServer)
-tangoServerInit propertyNames (ServerStatus initialStatus) initialState commands deviceInitCallback = do
-  progName <- liftIO getProgName
-  args <- liftIO getArgs
-  freeFinalizerWrapped <- liftIO (createGlobalFinalizer free)
-  deviceInitCallbackWrapped <- liftIO (createDeviceInitCallback deviceInitCallback)
-  let voidWrapped :: (DeviceInstancePtr -> IO ()) -> CommandCallback
-      voidWrapped voidFunction instance' _ptrToBeIgnored = do
-        voidFunction instance'
-        pure nullPtr
-      extractCommandName :: TangoServerCommand -> Text
-      extractCommandName (ServerCommandVoidVoid (CommandName n) _) = n
-      wrapCommand :: TangoServerCommand -> CommandCallback
-      wrapCommand (ServerCommandVoidVoid _name f) = voidWrapped f
-      withConvertedCommand tsc f = do
-        wrappedCommandCallback <- liftIO (createCommandCallback (wrapCommand tsc))
-        withCString (unpack (extractCommandName tsc)) \commandNameC ->
-          with
-            ( HaskellCommandDefinition
-                commandNameC
-                HaskellDevVoid
-                HaskellDevVoid
-                wrappedCommandCallback
-            )
-            f
-  forM_ commands \haskellCommand -> withConvertedCommand haskellCommand (liftIO . tango_server_add_command_definition)
-  -- commandsWrapped <- traverse () commands
-  -- forM_ commands \haskellCommand -> do
-  --   wrappedCommandCallback <- liftIO (createCommandCallback (wrapCommand haskellCommand))
-  --   withCString (unpack commandName) \commandNameC ->
-  --     with
-  --       ( HaskellCommandDefinition
-  --           commandNameC
-  --           HaskellDevVoid
-  --           HaskellDevVoid
-  --           prepareForMeasurementWrapped
-  --       )
-  --       \commandDefPtr ->
-  --         liftIO
-  --           ( tango_server_add_command_definition
-  --               commandDefPtr
-  --           )
-  case args of
-    [] -> pure (Left "cannot initialize device server, missing first argument (instance name)")
-    (instanceName : _) -> do
-      liftIO $ putStrLn $ "initializing server with class name " <> pack progName <> ", instance name " <> pack instanceName
-      withCString progName \progNameC' ->
-        withCString instanceName \instanceNameC' ->
-          withArray [progNameC', instanceNameC'] \programArgumentsC ->
-            withCString (unpack initialStatus) \initialStatusC -> do
-              mapM_
-                (\propName -> withCString propName (\x -> liftIO (tango_server_add_property x)))
-                ((unpack . getPropertyName) <$> propertyNames)
-              liftIO $
-                tango_server_init
-                  2
-                  programArgumentsC
-                  freeFinalizerWrapped
-                  initialStatusC
-                  (fromIntegral $ fromEnum initialState)
-                  deviceInitCallbackWrapped
-              pure (Right InitedServer)
-
-tangoServerStart :: (UnliftIO.MonadUnliftIO m) => InitedServer -> m ()
-tangoServerStart _initedServer = liftIO tango_server_start
-
-tangoReadProperty :: (UnliftIO.MonadUnliftIO m) => DeviceInstancePtr -> PropertyName -> m Text
-tangoReadProperty instance' (PropertyName n) = do
-  resultAsCString <- withCStringFromText n (\x -> liftIO (tango_server_read_property instance' x))
-  resultAsString <- peekCString resultAsCString
-  pure (strip (pack resultAsString))
 
 propDetectorTowerIdentifier :: PropertyName
 propDetectorTowerIdentifier = PropertyName "detector_tower_identifier"
