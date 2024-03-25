@@ -110,7 +110,22 @@ pokeBounded desc ptr x =
     Nothing -> error ("invalid constant (" <> desc <> "): " <> show x)
     Just v -> poke @CInt (castPtr ptr) v
 
-data HaskellTangoDevState = On | Off | Close | Open | Insert | Extract | Moving | Standby | Fault | Init | Running | Alarm | Disable | Unknown deriving (Show, Eq, Bounded, Enum)
+data HaskellTangoDevState
+  = On
+  | Off
+  | Close
+  | Open
+  | Insert
+  | Extract
+  | Moving
+  | Standby
+  | Fault
+  | Init
+  | Running
+  | Alarm
+  | Disable
+  | Unknown
+  deriving (Show, Eq, Bounded, Enum)
 
 instance Storable HaskellTangoDevState where
   sizeOf _ = (# size TangoDevState)

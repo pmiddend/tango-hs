@@ -10,12 +10,19 @@ module TangoHL
     writeIntAttribute,
     commandInOutVoid,
     newDeviceProxy,
-    readIntAttribute,
+    readLong64Attribute,
+    readUShortAttribute,
     readDoubleAttribute,
+    readBoolAttribute,
+    readStateAttribute,
     tangoUrlFromText,
     DeviceProxyPtr,
     PropertyName (PropertyName),
+    TangoServerAttribute (TangoServerAttribute, tangoServerAttributeName, tangoServerAttributeAccessor),
+    TangoServerAttributeTypes (TangoServerAttributeTypeString),
+    TangoServerAttributeAccessor (TangoServerAttributeAccessor),
     CommandName (CommandName),
+    AttributeName (AttributeName),
     ServerStatus (ServerStatus),
     TangoServerCommand (..),
     tangoServerStart,
@@ -32,10 +39,11 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (Bool)
 import Data.Char (Char)
 import Data.Either (Either (Left, Right))
-import Data.Eq ((/=))
+import Data.Eq (Eq ((==)), (/=))
 import Data.Function (($), (.))
 import Data.Functor ((<$>))
 import Data.Int (Int, Int16, Int32, Int64)
+import Data.Maybe (Maybe (Just, Nothing))
 import Data.Semigroup ((<>))
 import Data.String (String, unlines)
 import Data.Text (Text, pack, strip, unpack)
@@ -48,6 +56,7 @@ import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (IO)
 import Tango.Common
   ( DeviceProxyPtr,
+    HaskellAttrWriteType (Read, ReadWrite),
     HaskellAttributeData (..),
     HaskellAttributeDataList (attributeDataListSequence),
     HaskellCommandData (..),
@@ -55,7 +64,7 @@ import Tango.Common
     HaskellDataQuality (..),
     HaskellDevFailed (HaskellDevFailed),
     HaskellErrorStack (errorStackLength, errorStackSequence),
-    HaskellTangoAttributeData (HaskellAttributeDataDoubleArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStringArray),
+    HaskellTangoAttributeData (HaskellAttributeDataBoolArray, HaskellAttributeDataDoubleArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStateArray, HaskellAttributeDataStringArray, HaskellAttributeDataUShortArray),
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
     HaskellTangoDevState,
@@ -71,11 +80,30 @@ import Tango.Common
     tango_set_timeout_millis,
     tango_write_attribute,
   )
-import Tango.Server (CommandCallback, DeviceInitCallback, DeviceInstancePtr, HaskellCommandDefinition (HaskellCommandDefinition), createCommandCallback, createDeviceInitCallback, createGlobalFinalizer, tango_server_add_command_definition, tango_server_add_property, tango_server_init, tango_server_read_property, tango_server_start)
+import Tango.Server
+  ( CommandCallback,
+    DeviceInitCallback,
+    DeviceInstancePtr,
+    HaskellAttributeDefinition (HaskellAttributeDefinition),
+    HaskellAttributeGetter,
+    HaskellAttributeSetter,
+    HaskellCommandDefinition (HaskellCommandDefinition),
+    createCommandCallback,
+    createDeviceInitCallback,
+    createGetterWrapper,
+    createGlobalFinalizer,
+    createSetterWrapper,
+    tango_server_add_attribute_definition,
+    tango_server_add_command_definition,
+    tango_server_add_property,
+    tango_server_init,
+    tango_server_read_property,
+    tango_server_start,
+  )
 import Text.Show (Show, show)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
-import UnliftIO.Foreign (alloca, peek, peekArray, peekCString, with, withArray, withCString)
+import UnliftIO.Foreign (FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
 import Prelude (Double, Enum (fromEnum), Float, error, fromIntegral, realToFrac)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
@@ -151,8 +179,23 @@ readStringAttribute proxyPtr attributeNameHaskell =
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not a string"
 
-readIntAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Int
-readIntAttribute proxyPtr attributeNameHaskell =
+readStateAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> m HaskellTangoDevState
+readStateAttribute proxyPtr =
+  liftIO $ withCString "State" $ \attributeName -> do
+    alloca $ \haskellAttributeDataPtr -> do
+      checkResult (tango_read_attribute proxyPtr attributeName haskellAttributeDataPtr)
+      haskellAttributeData <- peek haskellAttributeDataPtr
+      case tangoAttributeData haskellAttributeData of
+        HaskellAttributeDataStateArray (HaskellTangoVarArray {varArrayValues}) -> do
+          firstValue <- peek varArrayValues
+          tango_free_AttributeData haskellAttributeDataPtr
+          pure firstValue
+        _ -> do
+          tango_free_AttributeData haskellAttributeDataPtr
+          error "invalid type of attribute, not a state"
+
+readLong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Int
+readLong64Attribute proxyPtr attributeNameHaskell =
   -- FIXME: This is 99% the same as readStringAttribute!
   liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
     alloca $ \haskellAttributeDataPtr -> do
@@ -166,6 +209,22 @@ readIntAttribute proxyPtr attributeNameHaskell =
         _ -> do
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not an int"
+
+readUShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Int
+readUShortAttribute proxyPtr attributeNameHaskell =
+  -- FIXME: This is 99% the same as readStringAttribute!
+  liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
+    alloca $ \haskellAttributeDataPtr -> do
+      checkResult (tango_read_attribute proxyPtr attributeName haskellAttributeDataPtr)
+      haskellAttributeData <- peek haskellAttributeDataPtr
+      case tangoAttributeData haskellAttributeData of
+        HaskellAttributeDataUShortArray (HaskellTangoVarArray {varArrayValues}) -> do
+          firstValue <- peek varArrayValues
+          tango_free_AttributeData haskellAttributeDataPtr
+          pure (fromIntegral firstValue)
+        _ -> do
+          tango_free_AttributeData haskellAttributeDataPtr
+          error "invalid type of attribute, not an ushort"
 
 readDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Double
 readDoubleAttribute proxyPtr attributeNameHaskell =
@@ -182,6 +241,22 @@ readDoubleAttribute proxyPtr attributeNameHaskell =
         _ -> do
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not a double"
+
+readBoolAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Bool
+readBoolAttribute proxyPtr attributeNameHaskell =
+  -- FIXME: This is 99% the same as readStringAttribute!
+  liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
+    alloca $ \haskellAttributeDataPtr -> do
+      checkResult (tango_read_attribute proxyPtr attributeName haskellAttributeDataPtr)
+      haskellAttributeData <- peek haskellAttributeDataPtr
+      case tangoAttributeData haskellAttributeData of
+        HaskellAttributeDataBoolArray (HaskellTangoVarArray {varArrayValues}) -> do
+          firstValue <- peek varArrayValues
+          tango_free_AttributeData haskellAttributeDataPtr
+          pure (firstValue == 0)
+        _ -> do
+          tango_free_AttributeData haskellAttributeDataPtr
+          error "invalid type of attribute, not a bool"
 
 commandInOutVoid :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m ()
 commandInOutVoid proxyPtr commandName =
@@ -204,15 +279,32 @@ newtype CommandName = CommandName Text
 
 data TangoServerCommand = ServerCommandVoidVoid CommandName (DeviceInstancePtr -> IO ())
 
+newtype AttributeName = AttributeName {getAttributeName :: Text}
+
+data TangoServerAttributeAccessor a = TangoServerAttributeAccessor (DeviceInstancePtr -> IO a) (Maybe (DeviceInstancePtr -> a -> IO ()))
+
+writeTypeFromAccessor :: TangoServerAttributeAccessor a -> HaskellAttrWriteType
+writeTypeFromAccessor (TangoServerAttributeAccessor _ Nothing) = Read
+writeTypeFromAccessor _ = ReadWrite
+
+newtype TangoServerAttributeTypes = TangoServerAttributeTypeString (TangoServerAttributeAccessor Text)
+
+data TangoServerAttribute = TangoServerAttribute
+  { tangoServerAttributeName :: AttributeName,
+    tangoServerAttributeAccessor :: TangoServerAttributeTypes
+  }
+
 tangoServerInit ::
+  forall m.
   (UnliftIO.MonadUnliftIO m) =>
   [PropertyName] ->
   ServerStatus ->
   HaskellTangoDevState ->
+  [TangoServerAttribute] ->
   [TangoServerCommand] ->
   DeviceInitCallback ->
   m (Either Text InitedServer)
-tangoServerInit propertyNames (ServerStatus initialStatus) initialState commands deviceInitCallback = do
+tangoServerInit propertyNames (ServerStatus initialStatus) initialState attributes commands deviceInitCallback = do
   progName <- getProgName
   args <- getArgs
   freeFinalizerWrapped <- liftIO (createGlobalFinalizer free)
@@ -223,8 +315,15 @@ tangoServerInit propertyNames (ServerStatus initialStatus) initialState commands
         pure nullPtr
       extractCommandName :: TangoServerCommand -> Text
       extractCommandName (ServerCommandVoidVoid (CommandName n) _) = n
+      extractAttributeName :: TangoServerAttribute -> Text
+      extractAttributeName = getAttributeName . tangoServerAttributeName
       wrapCommand :: TangoServerCommand -> CommandCallback
       wrapCommand (ServerCommandVoidVoid _name f) = voidWrapped f
+      extractAttributeDataType :: TangoServerAttribute -> HaskellTangoDataType
+      extractAttributeDataType (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString _}) = HaskellDevString
+      extractWriteType :: TangoServerAttribute -> HaskellAttrWriteType
+      extractWriteType (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString accessor}) = writeTypeFromAccessor accessor
+      withConvertedCommand :: TangoServerCommand -> (Ptr HaskellCommandDefinition -> m ()) -> m ()
       withConvertedCommand tsc f = do
         wrappedCommandCallback <- liftIO (createCommandCallback (wrapCommand tsc))
         withCString (unpack (extractCommandName tsc)) \commandNameC ->
@@ -236,23 +335,36 @@ tangoServerInit propertyNames (ServerStatus initialStatus) initialState commands
                 wrappedCommandCallback
             )
             f
+      extractGetCallback :: TangoServerAttribute -> IO (FunPtr HaskellAttributeGetter)
+      extractGetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString (TangoServerAttributeAccessor getter _)}) =
+        createGetterWrapper \devicePtr writePtr -> do
+          textValue <- getter devicePtr
+          cstringValue <- newCString (unpack textValue)
+          poke (castPtr writePtr) cstringValue
+      extractSetCallback :: TangoServerAttribute -> IO (FunPtr HaskellAttributeSetter)
+      extractSetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString (TangoServerAttributeAccessor _ (Just setter))}) =
+        createSetterWrapper \devicePtr readPtr -> do
+          readCstring <- peekCString (castPtr readPtr)
+          setter devicePtr (pack readCstring)
+      extractSetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString (TangoServerAttributeAccessor _ Nothing)}) =
+        createSetterWrapper \_devicePtr _readPtr -> pure ()
+      withConvertedAttribute :: TangoServerAttribute -> (Ptr HaskellAttributeDefinition -> m ()) -> m ()
+      withConvertedAttribute tsa f = do
+        withCString (unpack (extractAttributeName tsa)) \attributeNameC -> do
+          setCallbackWrapper <- liftIO (extractSetCallback tsa)
+          getCallbackWrapper <- liftIO (extractGetCallback tsa)
+          with
+            ( HaskellAttributeDefinition
+                attributeNameC
+                (extractAttributeDataType tsa)
+                (extractWriteType tsa)
+                setCallbackWrapper
+                getCallbackWrapper
+            )
+            f
+
   forM_ commands \haskellCommand -> withConvertedCommand haskellCommand (liftIO . tango_server_add_command_definition)
-  -- commandsWrapped <- traverse () commands
-  -- forM_ commands \haskellCommand -> do
-  --   wrappedCommandCallback <- liftIO (createCommandCallback (wrapCommand haskellCommand))
-  --   withCString (unpack commandName) \commandNameC ->
-  --     with
-  --       ( HaskellCommandDefinition
-  --           commandNameC
-  --           HaskellDevVoid
-  --           HaskellDevVoid
-  --           prepareForMeasurementWrapped
-  --       )
-  --       \commandDefPtr ->
-  --         liftIO
-  --           ( tango_server_add_command_definition
-  --               commandDefPtr
-  --           )
+  forM_ attributes \haskellAttribute -> withConvertedAttribute haskellAttribute (liftIO . tango_server_add_attribute_definition)
   case args of
     [] -> pure (Left "cannot initialize device server, missing first argument (instance name)")
     (instanceName : _) -> do

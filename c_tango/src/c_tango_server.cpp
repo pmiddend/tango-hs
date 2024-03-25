@@ -231,6 +231,8 @@ public:
       char *haskell_string;
       def.get_callback(dev, &haskell_string);
 
+      std::cout << "get callback: haskell string: " << haskell_string << "\n";
+
       // We also need a container for this C string, which we allocate on the
       // heap here.
       char **tango_string_array = new char *;

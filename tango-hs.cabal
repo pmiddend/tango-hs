@@ -273,6 +273,10 @@ executable P11RunnerHs
                      , text
                      , derive-storable
                      , unliftio
+                     , time
+                     , aeson
+                     , transformers
+                     , mtl
     hs-source-dirs:    app
     ghc-options:       -threaded -rtsopts
     -- include-dirs: c_tango/src

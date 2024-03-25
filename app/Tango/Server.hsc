@@ -18,14 +18,17 @@ module Tango.Server
     tango_server_store_user_data,
     tango_server_get_user_data,
     createGlobalFinalizer,
+    HaskellAttributeGetter,
+    HaskellAttributeSetter,
     CommandCallback,
     tango_server_add_property,
     tango_server_read_property,
     createDeviceInitCallback,
     DeviceInitCallback,
+    createGetterWrapper,
+    createSetterWrapper,
     DeviceInstancePtr,
     tango_server_set_state,
-    createFnWrapper,
     HaskellAttributeDefinition (..),
     HaskellCommandDefinition (..),
   )
@@ -48,7 +51,13 @@ type GlobalFinalizer = Ptr () -> IO ()
 
 foreign import ccall "wrapper" createGlobalFinalizer :: GlobalFinalizer -> IO (FunPtr GlobalFinalizer)
 
-foreign import ccall "wrapper" createFnWrapper :: (Ptr () -> IO ()) -> IO (FunPtr (Ptr () -> IO ()))
+type HaskellAttributeGetter = DeviceInstancePtr -> Ptr () -> IO ()
+
+type HaskellAttributeSetter = DeviceInstancePtr -> Ptr () -> IO ()
+
+foreign import ccall "wrapper" createGetterWrapper :: HaskellAttributeGetter -> IO (FunPtr HaskellAttributeGetter)
+
+foreign import ccall "wrapper" createSetterWrapper :: HaskellAttributeSetter -> IO (FunPtr HaskellAttributeSetter)
 
 type DeviceInstancePtr = Ptr ()
 
@@ -65,9 +74,9 @@ foreign import capi "c_tango.h tango_server_start"
 data HaskellAttributeDefinition = HaskellAttributeDefinition
   { attribute_name :: !CString,
     data_type :: !HaskellTangoDataType,
-    write_type :: HaskellAttrWriteType,
-    set_callback :: FunPtr (DeviceInstancePtr -> Ptr () -> IO ()),
-    get_callback :: FunPtr (DeviceInstancePtr -> Ptr () -> IO ())
+    write_type :: !HaskellAttrWriteType,
+    set_callback :: FunPtr HaskellAttributeGetter,
+    get_callback :: FunPtr HaskellAttributeSetter
   }
   deriving (Show, Generic)
 
