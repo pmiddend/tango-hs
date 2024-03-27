@@ -12,6 +12,7 @@ module TangoHL
     newDeviceProxy,
     readLong64Attribute,
     readUShortAttribute,
+    readULong64Attribute,
     readDoubleAttribute,
     readBoolAttribute,
     readStateAttribute,
@@ -64,7 +65,7 @@ import Tango.Common
     HaskellDataQuality (..),
     HaskellDevFailed (HaskellDevFailed),
     HaskellErrorStack (errorStackLength, errorStackSequence),
-    HaskellTangoAttributeData (HaskellAttributeDataBoolArray, HaskellAttributeDataDoubleArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStateArray, HaskellAttributeDataStringArray, HaskellAttributeDataUShortArray),
+    HaskellTangoAttributeData (HaskellAttributeDataBoolArray, HaskellAttributeDataDoubleArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStateArray, HaskellAttributeDataStringArray, HaskellAttributeDataULong64Array, HaskellAttributeDataUShortArray),
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
     HaskellTangoDevState,
@@ -193,6 +194,24 @@ readStateAttribute proxyPtr =
         _ -> do
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not a state"
+
+readAttributeGeneral :: (MonadIO m) => (HaskellTangoAttributeData -> IO (Maybe a)) -> DeviceProxyPtr -> Text -> m a
+readAttributeGeneral extractValue proxyPtr attributeNameHaskell =
+  liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
+    alloca $ \haskellAttributeDataPtr -> do
+      checkResult (tango_read_attribute proxyPtr attributeName haskellAttributeDataPtr)
+      haskellAttributeData <- peek haskellAttributeDataPtr
+      extractedValue <- extractValue (tangoAttributeData haskellAttributeData)
+      case extractedValue of
+        Nothing -> error ("invalid type for attribute \"" <> unpack attributeNameHaskell <> "\"")
+        Just v ->
+          pure v
+
+readULong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Int
+readULong64Attribute = readAttributeGeneral extract
+  where
+    extract (HaskellAttributeDataULong64Array (HaskellTangoVarArray {varArrayValues})) = Just . fromIntegral <$> peek varArrayValues
+    extract _ = pure Nothing
 
 readLong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> m Int
 readLong64Attribute proxyPtr attributeNameHaskell =
