@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -10,6 +11,7 @@ module TangoHL
     writeIntAttribute,
     commandInOutVoid,
     newDeviceProxy,
+    resolveTypedProperties,
     readLong64Attribute,
     readUShortAttribute,
     readULong64Attribute,
@@ -25,25 +27,34 @@ module TangoHL
     CommandName (CommandName),
     AttributeName (AttributeName),
     ServerStatus (ServerStatus),
+    TangoUrl,
     TangoServerCommand (..),
+    PropApplicative,
     tangoServerStart,
+    TypedProperty (TypedProperty),
+    gatherTypedPropertyNames,
     tangoReadProperty,
     tangoServerInit,
     InitedServer,
+    readTypedProperty,
+    readTypedTextProperty,
   )
 where
 
 import Control.Applicative (pure)
+import Control.Applicative.Free (Ap, liftAp, runAp, runAp_)
 import Control.Exception (Exception, bracket, throw)
 import Control.Monad (fail, forM_, mapM_, void, when, (>>=))
+import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (Bool)
 import Data.Char (Char)
 import Data.Either (Either (Left, Right))
 import Data.Eq (Eq ((==)), (/=))
 import Data.Function (($), (.))
-import Data.Functor ((<$>))
+import Data.Functor (Functor, (<$>))
 import Data.Int (Int, Int16, Int32, Int64)
+import Data.List (singleton)
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Semigroup ((<>))
 import Data.String (String, unlines)
@@ -408,8 +419,38 @@ tangoServerInit propertyNames (ServerStatus initialStatus) initialState attribut
 tangoServerStart :: (UnliftIO.MonadUnliftIO m) => InitedServer -> m ()
 tangoServerStart _initedServer = liftIO tango_server_start
 
-tangoReadProperty :: (UnliftIO.MonadUnliftIO m) => DeviceInstancePtr -> PropertyName -> m Text
+tangoReadProperty :: DeviceInstancePtr -> PropertyName -> IO Text
 tangoReadProperty instance' (PropertyName n) = do
   resultAsCString <- withCStringFromText n (liftIO . tango_server_read_property instance')
   resultAsString <- peekCString resultAsCString
   pure (strip (pack resultAsString))
+
+data TypedProperty a = TypedProperty
+  { typedPropName :: PropertyName,
+    typedPropReader :: Text -> Maybe a
+  }
+  deriving (Functor)
+
+readTypedProperty :: Text -> (Text -> Maybe a) -> Ap TypedProperty a
+readTypedProperty name reader = liftAp $ TypedProperty (PropertyName name) reader
+
+readTypedTextProperty :: Text -> Ap TypedProperty Text
+readTypedTextProperty name = readTypedProperty name Just
+
+type PropApplicative = Ap TypedProperty
+
+gatherTypedPropertyNames :: PropApplicative a -> [PropertyName]
+gatherTypedPropertyNames = runAp_ (singleton . typedPropName)
+
+resolveTypedProperties' :: DeviceInstancePtr -> PropApplicative a -> ExceptT Text IO a
+resolveTypedProperties' ptr = runAp deconstruct
+  where
+    deconstruct :: TypedProperty a -> ExceptT Text IO a
+    deconstruct (TypedProperty {typedPropName = PropertyName typedPropName', typedPropReader}) = do
+      propValueText <- liftIO $ tangoReadProperty ptr (PropertyName typedPropName')
+      case typedPropReader propValueText of
+        Nothing -> throwError $ "error parsing property \"" <> typedPropName' <> "\": " <> propValueText
+        Just propValue' -> pure propValue'
+
+resolveTypedProperties :: DeviceInstancePtr -> PropApplicative a -> IO (Either Text a)
+resolveTypedProperties ptr myAp = runExceptT (resolveTypedProperties' ptr myAp)

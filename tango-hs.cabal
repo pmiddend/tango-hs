@@ -263,6 +263,29 @@ executable TestClient
     pkgconfig-depends: ctango
     default-language:  Haskell2010
 
+executable FreeTest
+    import:            warnings
+    main-is:           FreeTest.hs
+    other-modules:     Tango.Common
+                     , Tango.Server
+                     , TangoHL
+    build-depends:     base
+                     , free
+                     , text
+                     , derive-storable
+                     , unliftio
+                     , time
+                     , aeson
+                     , transformers
+                     , mtl
+    hs-source-dirs:    app
+    ghc-options:       -threaded -rtsopts
+    -- include-dirs: c_tango/src
+    hsc2hs-options:    -k --define=CABAL_BINDGEN=1
+    pkgconfig-depends: ctango
+    default-language:  Haskell2010
+           
+    
 executable P11RunnerHs
     import:            warnings
     main-is:           P11RunnerHs.hs
@@ -275,6 +298,7 @@ executable P11RunnerHs
                      , unliftio
                      , time
                      , aeson
+                     , free
                      , transformers
                      , mtl
     hs-source-dirs:    app

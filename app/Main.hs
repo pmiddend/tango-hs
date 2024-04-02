@@ -264,12 +264,12 @@ main2 = do
         with (HaskellTangoVarArray (fromIntegral (length attributeNames)) attributeNamesCStringPtr) $ \stringArrayPtr -> alloca $ \attributeInfoListPtr -> do
           checkResult (tango_get_attribute_config proxyPtr stringArrayPtr attributeInfoListPtr)
           infos <- peek attributeInfoListPtr
-          putStrLn ("<= peeked attribute info list, now peeking each element")
+          putStrLn "<= peeked attribute info list, now peeking each element"
           infosList <- peekArray (fromIntegral (attributeInfoListLength infos)) (attributeInfoListSequence infos)
-          putStrLn ("<= read attribute configurations, starting list of attribute configurations:")
+          putStrLn "<= read attribute configurations, starting list of attribute configurations:"
           forM_ infosList $ \info -> do
             putStrLn ("  -> list element: " <> show info)
-          putStrLn ("=> finish listing configurations")
+          putStrLn "=> finish listing configurations"
 
     withCString "double_scalar" $ \nameCString -> withArray [1338.0] $ \doubleArrayPtr ->
       with

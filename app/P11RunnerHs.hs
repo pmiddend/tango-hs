@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -10,6 +11,7 @@ import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, readMVar)
 import Control.Monad (forM_)
+import Control.Monad.Free (Free)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.State.Strict (StateT, evalStateT, get, modify)
 import Data.Aeson (FromJSON (parseJSON), eitherDecodeFileStrict', withObject, (.:))
@@ -51,20 +53,27 @@ import TangoHL
   ( AttributeName (AttributeName),
     CommandName (CommandName),
     DeviceProxyPtr,
+    PropApplicative,
     PropertyName (PropertyName),
     ServerStatus (ServerStatus),
     TangoServerAttribute (TangoServerAttribute, tangoServerAttributeAccessor, tangoServerAttributeName),
     TangoServerAttributeAccessor (TangoServerAttributeAccessor),
     TangoServerAttributeTypes (TangoServerAttributeTypeString),
     TangoServerCommand (ServerCommandVoidVoid),
+    TangoUrl,
+    TypedProperty (TypedProperty),
+    gatherTypedPropertyNames,
     newDeviceProxy,
     readBoolAttribute,
     readDoubleAttribute,
     readLong64Attribute,
     readStateAttribute,
     readStringAttribute,
+    readTypedProperty,
+    readTypedTextProperty,
     readULong64Attribute,
     readUShortAttribute,
+    resolveTypedProperties,
     tangoReadProperty,
     tangoServerInit,
     tangoServerStart,
@@ -87,23 +96,43 @@ data ColliConfig = ColliConfig
   { inY :: Double,
     inZ :: Double,
     outY :: Double,
+    outZ :: Double,
+    toleranceY :: Double,
+    toleranceZ :: Double
+  }
+
+data ColliConfigJson = ColliConfigJson
+  { inY :: Double,
+    inZ :: Double,
+    outY :: Double,
     outZ :: Double
   }
 
-instance FromJSON ColliConfig where
-  parseJSON = withObject "ColliConfig" \v ->
-    ColliConfig
+instance FromJSON ColliConfigJson where
+  parseJSON = withObject "ColliConfigJson" \v ->
+    ColliConfigJson
       <$> v .: "in_y"
       <*> v .: "in_z"
       <*> v .: "out_y"
       <*> v .: "out_z"
 
-readColliConfig :: (MonadIO m) => FilePath -> m (Either Text ColliConfig)
+readColliConfig :: (MonadIO m) => FilePath -> m (Either Text ColliConfigJson)
 readColliConfig fp =
   liftIO $
     eitherDecodeFileStrict' fp >>= \case
       Left e -> pure $ Left (pack e)
       Right v -> pure (Right v)
+
+colliConfigFromJson :: ColliConfigJson -> Double -> Double -> ColliConfig
+colliConfigFromJson (ColliConfigJson {inY, inZ, outY, outZ}) toleranceY toleranceZ =
+  ColliConfig
+    { inY = inY,
+      inZ = inZ,
+      outY = outY,
+      outZ = outZ,
+      toleranceY = toleranceY,
+      toleranceZ = toleranceZ
+    }
 
 data MeasuringState = MeasuringState
   { startTime :: !UTCTime,
@@ -141,7 +170,12 @@ data DeviceData = DeviceData
     detectorTowerSafeDistanceMm :: Double,
     detectorTowerMeasurementDistanceMm :: Double,
     desiredCollimatorStatus :: DesiredCollimatorStatus,
-    calculatedRunnerState :: RunnerState
+    calculatedRunnerState :: RunnerState,
+    colliConfig :: ColliConfig,
+    useChopper :: Bool,
+    exposureTimeMs :: Double,
+    numberOfImages :: Int,
+    towerDistanceToleranceMm :: Double
   }
 
 prepareForMeasurement :: MVar DeviceData -> DeviceInstancePtr -> IO ()
@@ -220,12 +254,12 @@ isEigerConfigured useChopper userExposureTimeMs numberOfImages chopperProxy eige
       && nimages == desiredNimages
       && ntrigger == desiredNtrigger
 
-tangoReadDoubleProperty :: (UnliftIO.MonadUnliftIO m, Read b) => DeviceInstancePtr -> PropertyName -> m b
-tangoReadDoubleProperty instance' propName@(PropertyName propName') = do
-  stringValue <- tangoReadProperty instance' propName
-  case readMaybe (unpack stringValue) of
-    Nothing -> error $ "couldn't read double attribute " <> unpack propName' <> ": couldn't convert this from string: " <> unpack stringValue
-    Just doubleValue -> pure doubleValue
+-- tangoReadDoubleProperty :: (UnliftIO.MonadUnliftIO m, Read b) => DeviceInstancePtr -> PropertyName -> m b
+-- tangoReadDoubleProperty instance' propName@(PropertyName propName') = do
+--   stringValue <- tangoReadProperty instance' propName
+--   case readMaybe (unpack stringValue) of
+--     Nothing -> error $ "couldn't read double attribute " <> unpack propName' <> ": couldn't convert this from string: " <> unpack stringValue
+--     Just doubleValue -> pure doubleValue
 
 packShow :: (Show a) => a -> Text
 packShow = pack . show
@@ -332,75 +366,90 @@ calculateState
           else -- FIXME: continue here
             addMessage "lol please continue here"
 
-propDetectorTowerIdentifier = PropertyName "detector_tower_identifier"
+data P11RunnerProperties = P11RunnerProperties
+  { propDetectorTowerIdentifier :: TangoUrl,
+    propChopperIdentifier :: TangoUrl,
+    propColliYIdentifier :: TangoUrl,
+    propColliZIdentifier :: TangoUrl,
+    propEigerStreamIdentifier :: TangoUrl,
+    propFastShutterIdentifier :: TangoUrl,
+    propDetectorIdentifier :: TangoUrl,
+    propColliToleranceY :: Double,
+    propColliToleranceZ :: Double,
+    propTowerSafeDistanceMm :: Double,
+    propTowerDistanceToleranceMm :: Double,
+    propColliConfig :: FilePath
+  }
 
-propChopperIdentifier = PropertyName "chopper_identifier"
+readMaybeText :: Text -> Maybe Double
+readMaybeText = readMaybe . unpack
 
-propColliYIdentifier = PropertyName "colli_motor_identifier_y"
-
-propColliZIdentifier = PropertyName "colli_motor_identifier_z"
-
-propEigerStreamIdentifier = PropertyName "eiger_stream_identifier"
-
-propFastShutterIdentifier = PropertyName "fast_shutter_identifier"
-
-propDetectorIdentifier = PropertyName "detector_identifier"
-
-propColliToleranceY = PropertyName "colli_position_tolerance_y"
-
-propColliToleranceZ = PropertyName "colli_position_tolerance_z"
-
-propTowerSafeDistance = PropertyName "detector_tower_safe_distance_mm"
-
-propTowerDistanceTolerance = PropertyName "detector_distance_tolerance_mm"
+p11RunnerProperties :: PropApplicative P11RunnerProperties
+p11RunnerProperties =
+  P11RunnerProperties
+    <$> readTypedProperty "detector_tower_identifier" (Just . tangoUrlFromText)
+    <*> readTypedProperty "chopper_identifier" (Just . tangoUrlFromText)
+    <*> readTypedProperty "colli_motor_identifier_y" (Just . tangoUrlFromText)
+    <*> readTypedProperty "colli_motor_identifier_z" (Just . tangoUrlFromText)
+    <*> readTypedProperty "eiger_stream_identifier" (Just . tangoUrlFromText)
+    <*> readTypedProperty "fast_shutter_identifier" (Just . tangoUrlFromText)
+    <*> readTypedProperty "detector_identifier" (Just . tangoUrlFromText)
+    <*> readTypedProperty "colli_position_tolerance_y" readMaybeText
+    <*> readTypedProperty "colli_position_tolerance_z" readMaybeText
+    <*> readTypedProperty "detector_tower_safe_distance_mm" readMaybeText
+    <*> readTypedProperty "detector_distance_tolerance_mm" readMaybeText
+    <*> readTypedProperty "colli_config" (Just . unpack)
 
 initCallback :: MVar DeviceData -> DeviceInstancePtr -> IO ()
 initCallback deviceData instance' = do
-  putStrLn "in init callback, connecting to detector tower"
-  let createProxy propName = tangoReadProperty instance' propName >>= newDeviceProxy . tangoUrlFromText
-  proxies <-
-    Proxies
-      <$> createProxy propDetectorTowerIdentifier
-      <*> createProxy propChopperIdentifier
-      <*> createProxy propColliYIdentifier
-      <*> createProxy propColliZIdentifier
-      <*> createProxy propEigerStreamIdentifier
-      <*> createProxy propFastShutterIdentifier
-      <*> createProxy propDetectorIdentifier
-  towerSafeDistanceMm <- tangoReadDoubleProperty instance' propTowerSafeDistance
-  towerDistanceToleranceMm <- tangoReadDoubleProperty instance' propTowerDistanceTolerance
-  colliToleranceY <- tangoReadDoubleProperty instance' propColliToleranceY
-  colliToleranceZ <- tangoReadDoubleProperty instance' propColliToleranceZ
-  colliConfig <- tangoReadProperty instance' (PropertyName "colli_config") >>= readColliConfig . unpack
-  case colliConfig of
-    Left e -> error $ "invalid colli config file: " <> e
-    Right colliConfig' -> do
-      let initialMeasurementDistanceMm = 200.0
-          initialDesiredCollimatorStatus = DesiredIn
-          initialUseChopper = False
-          initialUserExposureTimeMs = 7.6
-          initialNumberOfImages = 5000
-      calculatedState <-
-        calculateState
-          proxies
-          initialUseChopper
-          initialUserExposureTimeMs
-          initialNumberOfImages
-          initialMeasurementDistanceMm
-          towerDistanceToleranceMm
-          initialDesiredCollimatorStatus
-          colliConfig'
-          colliToleranceY
-          colliToleranceZ
-      let deviceDataContent =
-            DeviceData
-              proxies
-              towerSafeDistanceMm
-              initialMeasurementDistanceMm
-              initialDesiredCollimatorStatus
-              calculatedState
-      putMVar deviceData deviceDataContent
-      putStrLn "done"
+  putStrLn "in init callback, resolving properties"
+  resolvedProps' <- resolveTypedProperties instance' p11RunnerProperties
+  case resolvedProps' of
+    Left e -> error $ "error resolving properties: " <> unpack e
+    Right
+      ( P11RunnerProperties
+          { propDetectorTowerIdentifier,
+            propChopperIdentifier,
+            propColliYIdentifier,
+            propColliZIdentifier,
+            propEigerStreamIdentifier,
+            propFastShutterIdentifier,
+            propDetectorIdentifier,
+            propColliConfig,
+            propTowerSafeDistanceMm,
+            propTowerDistanceToleranceMm,
+            propColliToleranceY,
+            propColliToleranceZ
+          }
+        ) -> do
+        proxies <-
+          Proxies
+            <$> newDeviceProxy propDetectorTowerIdentifier
+            <*> newDeviceProxy propChopperIdentifier
+            <*> newDeviceProxy propColliYIdentifier
+            <*> newDeviceProxy propColliZIdentifier
+            <*> newDeviceProxy propEigerStreamIdentifier
+            <*> newDeviceProxy propFastShutterIdentifier
+            <*> newDeviceProxy propDetectorIdentifier
+        colliConfig <- readColliConfig propColliConfig
+        case colliConfig of
+          Left e -> error $ "invalid colli config file \"" <> propColliConfig <> "\": " <> unpack e
+          Right colliConfig' -> do
+            let deviceDataContent =
+                  DeviceData
+                    { proxies = proxies,
+                      detectorTowerSafeDistanceMm = propTowerSafeDistanceMm,
+                      detectorTowerMeasurementDistanceMm = 200.0,
+                      desiredCollimatorStatus = DesiredIn,
+                      calculatedRunnerState = RunnerStateUnknownMoving "before first connect call",
+                      useChopper = False,
+                      exposureTimeMs = 7.6,
+                      numberOfImages = 1000,
+                      colliConfig = colliConfigFromJson colliConfig' propColliToleranceY propColliToleranceZ,
+                      towerDistanceToleranceMm = propTowerDistanceToleranceMm
+                    }
+            putMVar deviceData deviceDataContent
+            putStrLn "initializing successful"
 
 readTestAttribute :: DeviceInstancePtr -> IO Text
 readTestAttribute _ = pure "lol"
@@ -410,18 +459,7 @@ main = do
   deviceData <- newEmptyMVar
   initedServerEither <-
     tangoServerInit
-      [ propDetectorTowerIdentifier,
-        propChopperIdentifier,
-        propColliYIdentifier,
-        propColliZIdentifier,
-        propEigerStreamIdentifier,
-        propFastShutterIdentifier,
-        propDetectorIdentifier,
-        propColliToleranceY,
-        propColliToleranceZ,
-        propTowerSafeDistance,
-        propTowerDistanceTolerance
-      ]
+      (gatherTypedPropertyNames p11RunnerProperties)
       (ServerStatus "")
       Unknown
       [ TangoServerAttribute
