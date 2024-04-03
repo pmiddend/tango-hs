@@ -9,7 +9,7 @@
 
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, readMVar)
+import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newEmptyMVar, putMVar, readMVar)
 import Control.Monad (forM_)
 import Control.Monad.Free (Free)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -18,6 +18,7 @@ import Data.Aeson (FromJSON (parseJSON), eitherDecodeFileStrict', withObject, (.
 import Data.Text (Text, intercalate, pack, strip, unpack)
 import Data.Text.IO (putStrLn)
 import qualified Data.Text.Lazy as TL
+import Data.Time (getCurrentTime)
 import Data.Time.Clock (UTCTime)
 import Foreign.C (CInt, CLong)
 import Foreign.C.String (CString, newCString)
@@ -167,8 +168,8 @@ data DesiredCollimatorStatus = DesiredIn | DesiredOut
 
 data DeviceData = DeviceData
   { proxies :: Proxies,
-    detectorTowerSafeDistanceMm :: Double,
-    detectorTowerMeasurementDistanceMm :: Double,
+    towerSafeDistanceMm :: Double,
+    towerMeasurementDistanceMm :: Double,
     desiredCollimatorStatus :: DesiredCollimatorStatus,
     calculatedRunnerState :: RunnerState,
     colliConfig :: ColliConfig,
@@ -177,6 +178,12 @@ data DeviceData = DeviceData
     numberOfImages :: Int,
     towerDistanceToleranceMm :: Double
   }
+
+commandUpdate :: MVar DeviceData -> DeviceInstancePtr -> IO ()
+commandUpdate data' _instance = do
+  currentData <- readMVar data'
+  newState <- calculateState currentData
+  modifyMVar_ data' (\existing -> pure existing {calculatedRunnerState = newState})
 
 prepareForMeasurement :: MVar DeviceData -> DeviceInstancePtr -> IO ()
 prepareForMeasurement data' _instance = pure ()
@@ -203,13 +210,11 @@ checkCollimator ::
   DeviceProxyPtr ->
   ColliConfig ->
   DesiredCollimatorStatus ->
-  Double ->
-  Double ->
   StateT [Text] m (Maybe RunnerState)
-checkCollimator collimatorY collimatorZ colliConfig desiredColliStatus colliPositionToleranceY colliPositionToleranceZ = do
+checkCollimator collimatorY collimatorZ colliConfig desiredColliStatus = do
   let checkSubdevice :: DeviceProxyPtr -> Text -> Double -> Double -> Double -> StateT [Text] m (Maybe RunnerState)
       checkSubdevice proxy name inPos outPos tolerance = do
-        pos <- readDoubleAttribute proxy "Position"
+        pos <- liftIO $ readDoubleAttribute proxy "Position"
         case desiredColliStatus of
           DesiredIn ->
             if not (numberIsCloseAbs pos inPos tolerance)
@@ -219,17 +224,38 @@ checkCollimator collimatorY collimatorZ colliConfig desiredColliStatus colliPosi
             if not (numberIsCloseAbs pos outPos tolerance)
               then Just <$> finishUnknownStatic (", but the collimator " <> name <> " is not in the desired position (out)")
               else pure Nothing
-  yStatus <- checkSubdevice collimatorY "y" colliConfig.inY colliConfig.outY colliPositionToleranceY
-  zStatus <- checkSubdevice collimatorZ "z" colliConfig.inZ colliConfig.outZ colliPositionToleranceZ
+  yStatus <- checkSubdevice collimatorY "y" colliConfig.inY colliConfig.outY colliConfig.toleranceY
+  zStatus <- checkSubdevice collimatorZ "z" colliConfig.inZ colliConfig.outZ colliConfig.toleranceZ
   pure (yStatus <|> zStatus)
+
+checkChopper :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Bool -> m (Maybe Text)
+checkChopper chopper useChopper = do
+  chopperHolePosition <- readDoubleAttribute chopper "hole_position"
+  if useChopper
+    then case compareNumberIsCloseAbsMaybe "chopper position" chopperHolePosition 10.5 0.1 of
+      Just chopperPositionError -> pure (Just chopperPositionError)
+      Nothing -> pure Nothing
+    else case compareNumberIsCloseAbsMaybe "chopper position" chopperHolePosition 0 0.1 of
+      Just chopperPositionError -> pure (Just chopperPositionError)
+      Nothing -> pure Nothing
 
 readFastShutterOpen :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> m Bool
 readFastShutterOpen fastShutterProxy = do
   fastShutterValue <- readUShortAttribute fastShutterProxy "PSOoutputStatus"
   pure (fastShutterValue /= 0)
 
-isEigerConfigured :: Bool -> Double -> Int -> DeviceProxyPtr -> DeviceProxyPtr -> DeviceProxyPtr -> m Bool
-isEigerConfigured useChopper userExposureTimeMs numberOfImages chopperProxy eigerDetector eigerStream = do
+compareValuesMaybe :: (Eq a, Show a) => Text -> a -> a -> Maybe Text
+compareValuesMaybe description expected actual
+  | expected == actual = Nothing
+  | otherwise = Just (description <> " should be " <> packShow expected <> ", was " <> packShow actual)
+
+compareNumberIsCloseAbsMaybe :: (Ord a, Fractional a, Show a) => Text -> a -> a -> a -> Maybe Text
+compareNumberIsCloseAbsMaybe description expected actual tolerance
+  | numberIsCloseAbs actual expected tolerance = Nothing
+  | otherwise = Just (description <> " should be " <> packShow expected <> " (abs tolerance " <> packShow tolerance <> "), was " <> packShow actual)
+
+isEigerConfigured :: (UnliftIO.MonadUnliftIO m) => Bool -> Double -> Int -> DeviceProxyPtr -> DeviceProxyPtr -> m (Maybe Text)
+isEigerConfigured useChopper userExposureTimeMs numberOfImages chopperProxy eigerDetector = do
   frameTimeS <- readDoubleAttribute eigerDetector "FrameTime"
   countTimeS <- readDoubleAttribute eigerDetector "CountTime"
   nimages <- readULong64Attribute eigerDetector "Nimages"
@@ -247,12 +273,13 @@ isEigerConfigured useChopper userExposureTimeMs numberOfImages chopperProxy eige
       desiredTriggerMode = if useChopper then "exts" else "ints"
       desiredNimages = if useChopper then 1 else numberOfImages
       desiredNtrigger = if useChopper then numberOfImages else 1
+
   pure $
-    numberIsCloseAbs (frameTimeS * 1000.0) desiredFrameTimeMs 0.1
-      && numberIsCloseAbs (countTimeS * 1000.0) desiredCountTimeMs 0.1
-      && triggerMode == desiredTriggerMode
-      && nimages == desiredNimages
-      && ntrigger == desiredNtrigger
+    compareValuesMaybe "trigger mode" desiredTriggerMode triggerMode
+      <|> compareValuesMaybe "nimages" desiredNimages nimages
+      <|> compareValuesMaybe "ntrigger" desiredNtrigger ntrigger
+      <|> compareNumberIsCloseAbsMaybe "frame time (ms)" desiredFrameTimeMs (frameTimeS * 1000.0) 0.1
+      <|> compareNumberIsCloseAbsMaybe "count time (ms)" desiredCountTimeMs (countTimeS * 1000.0) 0.1
 
 -- tangoReadDoubleProperty :: (UnliftIO.MonadUnliftIO m, Read b) => DeviceInstancePtr -> PropertyName -> m b
 -- tangoReadDoubleProperty instance' propName@(PropertyName propName') = do
@@ -264,27 +291,20 @@ isEigerConfigured useChopper userExposureTimeMs numberOfImages chopperProxy eige
 packShow :: (Show a) => a -> Text
 packShow = pack . show
 
-calculateState :: Proxies -> Bool -> Double -> Int -> Double -> Double -> DesiredCollimatorStatus -> ColliConfig -> Double -> Double -> IO RunnerState
+calculateState :: DeviceData -> IO RunnerState
 calculateState
-  ( Proxies
-      { detectorTower,
-        chopper,
-        eigerStream,
-        fastShutter,
-        eigerDetector,
-        collimatorY,
-        collimatorZ
+  ( DeviceData
+      { proxies = Proxies {detectorTower, chopper, eigerStream, fastShutter, eigerDetector, collimatorY, collimatorZ},
+        useChopper,
+        exposureTimeMs,
+        numberOfImages,
+        towerSafeDistanceMm,
+        towerMeasurementDistanceMm,
+        desiredCollimatorStatus,
+        towerDistanceToleranceMm,
+        colliConfig
       }
-    )
-  useChopper
-  userExposureTimeMs
-  numberOfImages
-  towerMeasurementDistanceMm
-  detectorDistanceToleranceMm
-  desiredColliStatus
-  colliConfig
-  colliPositionToleranceY
-  colliPositionToleranceZ = do
+    ) = do
     towerState <- readStateAttribute detectorTower
     chopperState <- readStateAttribute chopper
     shieldIsDown <- readBoolAttribute detectorTower "ShieldIsDown"
@@ -309,36 +329,30 @@ calculateState
               <> packShow shieldIsUp
       else flippedEvalState ["nothing is moving"] do
         let addMessage message = modify (message :)
-        towerDistanceMm <- readDoubleAttribute detectorTower "DetectorDistance"
-        if numberIsCloseAbs towerDistanceMm towerMeasurementDistanceMm detectorDistanceToleranceMm
+        towerDistanceMm <- liftIO $ readDoubleAttribute detectorTower "DetectorDistance"
+        if numberIsCloseAbs towerDistanceMm towerMeasurementDistanceMm towerDistanceToleranceMm
           then do
             addMessage "detector tower is in measuring distance"
-            colliResult <-
-              checkCollimator
-                collimatorY
-                collimatorZ
-                colliConfig
-                desiredColliStatus
-                colliPositionToleranceY
-                colliPositionToleranceZ
+            colliResult <- checkCollimator collimatorY collimatorZ colliConfig desiredCollimatorStatus
             case colliResult of
               Just v -> pure v
               Nothing -> do
                 addMessage "collimator is in desired position"
                 if shieldIsUp
                   then do
-                    streamStatus <- readStateAttribute eigerStream
+                    addMessage "shield is up"
+                    streamStatus <- liftIO $ readStateAttribute eigerStream
                     case streamStatus of
-                      Running -> finishUnknownStatic ", but the shield is up and the Eiger is busy (have you forgotten to interlock the hutch?)"
+                      Running -> finishUnknownStatic ", but Eiger is busy (have you forgotten to interlock the hutch?)"
                       _ -> do
                         addMessage "Eiger is not busy"
-                        fastShutterOpen <- readFastShutterOpen fastShutter
+                        fastShutterOpen <- liftIO $ readFastShutterOpen fastShutter
                         if fastShutterOpen
                           then finishUnknownStatic ", but the fast shutter is open"
                           else pure RunnerStateReadyToMeasure
                   else do
                     addMessage "shield is down"
-                    streamStatus <- readStateAttribute eigerStream
+                    streamStatus <- liftIO $ readStateAttribute eigerStream
 
                     if streamStatus /= Running
                       then -- This might happen during the diode measurement which
@@ -347,24 +361,67 @@ calculateState
                         finishUnknownStatic ", but the stream is not busy (wait a few seconds - if it persists, then we have a problem)"
                       else do
                         addMessage "stream is busy"
-                        fastShutterOpen <- readFastShutterOpen fastShutter
+                        fastShutterOpen <- liftIO $ readFastShutterOpen fastShutter
                         if not fastShutterOpen
                           then finishUnknownStatic ", but the fast shutter is not open"
                           else do
-                            eigerConfigurationCheck :: Bool <-
-                              isEigerConfigured
-                                useChopper
-                                userExposureTimeMs
-                                numberOfImages
-                                chopper
-                                eigerDetector
-                                eigerStream
+                            eigerConfigurationCheck <-
+                              liftIO $
+                                isEigerConfigured
+                                  useChopper
+                                  exposureTimeMs
+                                  numberOfImages
+                                  chopper
+                                  eigerDetector
                             case eigerConfigurationCheck of
-                              Just v -> pure v
+                              Just eigerConfigError' -> finishUnknownStatic (", but " <> eigerConfigError')
                               Nothing -> do
                                 addMessage "Eiger detector is configured correctly"
-          else -- FIXME: continue here
-            addMessage "lol please continue here"
+                                chopperError <- liftIO $ checkChopper chopper useChopper
+                                case chopperError of
+                                  Just chopperError' -> finishUnknownStatic (", but " <> chopperError')
+                                  Nothing -> do
+                                    addMessage (if useChopper then "Chopper is in" else "Chopper is out")
+                                    currentTime <- liftIO getCurrentTime
+                                    pure
+                                      ( RunnerStateMeasuring
+                                          ( MeasuringState
+                                              { startTime = currentTime,
+                                                diodeTargetValueCount = 0,
+                                                diodeValues = [],
+                                                diodeCheckCompleted = True,
+                                                chopperState = if useChopper then ChopperStateEnabled else ChopperStateDisabled,
+                                                triggerSent = True
+                                              }
+                                          )
+                                      )
+          else
+            if not (numberIsCloseAbs towerDistanceMm towerSafeDistanceMm towerDistanceToleranceMm)
+              then
+                finishUnknownStatic
+                  ( ", but the tower is neither in the safe distance nor in the measurement distance: "
+                      <> packShow towerDistanceMm
+                      <> " (safe distance is "
+                      <> packShow towerSafeDistanceMm
+                      <> ", measurement distance is "
+                      <> packShow towerMeasurementDistanceMm
+                      <> ")"
+                  )
+              else do
+                addMessage "tower is in safe distance"
+                if shieldIsDown
+                  then finishUnknownStatic ", but the shield is down"
+                  else do
+                    addMessage "shield is up"
+                    streamStatus <- liftIO $ readStateAttribute eigerStream
+                    case streamStatus of
+                      Running -> finishUnknownStatic ", but Eiger is busy"
+                      _ -> do
+                        addMessage "Eiger is not busy"
+                        fastShutterOpen <- liftIO $ readFastShutterOpen fastShutter
+                        if fastShutterOpen
+                          then finishUnknownStatic ", but the fast shutter is open"
+                          else pure RunnerStateReadyToMeasure
 
 data P11RunnerProperties = P11RunnerProperties
   { propDetectorTowerIdentifier :: TangoUrl,
@@ -438,8 +495,8 @@ initCallback deviceData instance' = do
             let deviceDataContent =
                   DeviceData
                     { proxies = proxies,
-                      detectorTowerSafeDistanceMm = propTowerSafeDistanceMm,
-                      detectorTowerMeasurementDistanceMm = 200.0,
+                      towerSafeDistanceMm = propTowerSafeDistanceMm,
+                      towerMeasurementDistanceMm = 200.0,
                       desiredCollimatorStatus = DesiredIn,
                       calculatedRunnerState = RunnerStateUnknownMoving "before first connect call",
                       useChopper = False,
@@ -467,7 +524,13 @@ main = do
             tangoServerAttributeAccessor = TangoServerAttributeTypeString (TangoServerAttributeAccessor readTestAttribute Nothing)
           }
       ]
-      [ServerCommandVoidVoid (CommandName "prepare_for_measurement") (prepareForMeasurement deviceData)]
+      [ ServerCommandVoidVoid
+          (CommandName "update")
+          (commandUpdate deviceData),
+        ServerCommandVoidVoid
+          (CommandName "prepare_for_measurement")
+          (prepareForMeasurement deviceData)
+      ]
       (initCallback deviceData)
   case initedServerEither of
     Left e -> putStrLn ("error initializing: " <> e)
