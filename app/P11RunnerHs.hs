@@ -14,12 +14,14 @@ import Control.Monad (forM_)
 import Control.Monad.Free (Free)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.State.Strict (StateT, evalStateT, get, modify)
-import Data.Aeson (FromJSON (parseJSON), eitherDecodeFileStrict', withObject, (.:))
+import Data.Aeson (FromJSON (parseJSON), KeyValue ((.=)), ToJSON (toJSON), eitherDecodeFileStrict', object, withObject, (.:))
+import Data.Sequence (Seq, ViewR (EmptyR, (:>)), viewr, (<|))
 import Data.Text (Text, intercalate, pack, strip, unpack)
 import Data.Text.IO (putStrLn)
 import qualified Data.Text.Lazy as TL
 import Data.Time (getCurrentTime)
 import Data.Time.Clock (UTCTime)
+import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Foreign.C (CInt, CLong)
 import Foreign.C.String (CString, newCString)
 import Foreign.Marshal (free, peekArray)
@@ -166,6 +168,22 @@ data Proxies = Proxies
 
 data DesiredCollimatorStatus = DesiredIn | DesiredOut
 
+data LogLevel = LogLevelInfo | LogLevelError | LogLevelDebug
+
+instance ToJSON LogLevel where
+  toJSON LogLevelInfo = toJSON ("info" :: Text)
+  toJSON LogLevelError = toJSON ("error" :: Text)
+  toJSON LogLevelDebug = toJSON ("debug" :: Text)
+
+data Message = Message
+  { text :: Text,
+    level :: LogLevel,
+    when :: Int
+  }
+
+instance ToJSON Message where
+  toJSON m = object ["text" .= m.text, "level" .= m.level, "when" .= m.when]
+
 data DeviceData = DeviceData
   { proxies :: Proxies,
     towerSafeDistanceMm :: Double,
@@ -176,7 +194,8 @@ data DeviceData = DeviceData
     useChopper :: Bool,
     exposureTimeMs :: Double,
     numberOfImages :: Int,
-    towerDistanceToleranceMm :: Double
+    towerDistanceToleranceMm :: Double,
+    msgTrace :: Seq Message
   }
 
 commandUpdate :: MVar DeviceData -> DeviceInstancePtr -> IO ()
@@ -185,8 +204,47 @@ commandUpdate data' _instance = do
   newState <- calculateState currentData
   modifyMVar_ data' (\existing -> pure existing {calculatedRunnerState = newState})
 
+utcTimeToMillis :: UTCTime -> Int
+utcTimeToMillis t = round (utcTimeToPOSIXSeconds t / 1000)
+
+msgTraceMaximum :: Int
+msgTraceMaximum = 100
+
+appendSeqLimited :: Int -> a -> Seq a -> Seq a
+appendSeqLimited size value prior =
+  if length prior < size
+    then value <| prior
+    else case viewr prior of
+      EmptyR -> mempty
+      allButRightmost :> _ -> value <| allButRightmost
+
+appendMsg :: MVar DeviceData -> LogLevel -> Text -> IO ()
+appendMsg data' logLevel' text' = do
+  now <- getCurrentTime
+  modifyMVar_ data' \oldData ->
+    pure
+      oldData
+        { msgTrace =
+            appendSeqLimited
+              msgTraceMaximum
+              ( Message
+                  { text = text',
+                    level = logLevel',
+                    when = utcTimeToMillis now
+                  }
+              )
+              oldData.msgTrace
+        }
+
 prepareForMeasurement :: MVar DeviceData -> DeviceInstancePtr -> IO ()
-prepareForMeasurement data' _instance = pure ()
+prepareForMeasurement data' _instance = do
+  currentData <- readMVar data'
+  case currentData.calculatedRunnerState of
+    RunnerStatePreparingForMeasurement _ ->
+      appendMsg data' LogLevelDebug "already preparing for measurement, doing nothing"
+    RunnerStateReadyToMeasure -> appendMsg data' LogLevelDebug "already prepared for measurement, doing nothing"
+    _ -> do
+      appendMsg data' LogLevelInfo "preparing for measurement"
 
 numberIsClose :: (Ord a, Num a) => a -> a -> a -> a -> Bool
 numberIsClose a b relTol absTol =
@@ -503,7 +561,8 @@ initCallback deviceData instance' = do
                       exposureTimeMs = 7.6,
                       numberOfImages = 1000,
                       colliConfig = colliConfigFromJson colliConfig' propColliToleranceY propColliToleranceZ,
-                      towerDistanceToleranceMm = propTowerDistanceToleranceMm
+                      towerDistanceToleranceMm = propTowerDistanceToleranceMm,
+                      msgTrace = mempty
                     }
             putMVar deviceData deviceDataContent
             putStrLn "initializing successful"

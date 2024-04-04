@@ -300,6 +300,7 @@ executable P11RunnerHs
                      , aeson
                      , free
                      , transformers
+                     , containers
                      , mtl
     hs-source-dirs:    app
     ghc-options:       -threaded -rtsopts
