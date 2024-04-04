@@ -10,7 +10,7 @@
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newEmptyMVar, putMVar, readMVar)
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Control.Monad.Free (Free)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.State.Strict (StateT, evalStateT, get, modify)
@@ -65,6 +65,7 @@ import TangoHL
     TangoServerCommand (ServerCommandVoidVoid),
     TangoUrl,
     TypedProperty (TypedProperty),
+    commandInOutVoid,
     gatherTypedPropertyNames,
     newDeviceProxy,
     readBoolAttribute,
@@ -176,9 +177,9 @@ instance ToJSON LogLevel where
   toJSON LogLevelDebug = toJSON ("debug" :: Text)
 
 data Message = Message
-  { text :: Text,
-    level :: LogLevel,
-    when :: Int
+  { messageText :: Text,
+    messageLevel :: LogLevel,
+    messageTime :: Int
   }
 
 instance ToJSON Message where
@@ -228,13 +229,20 @@ appendMsg data' logLevel' text' = do
             appendSeqLimited
               msgTraceMaximum
               ( Message
-                  { text = text',
-                    level = logLevel',
-                    when = utcTimeToMillis now
+                  { messageText = text',
+                    messageLevel = logLevel',
+                    messageTime = utcTimeToMillis now
                   }
               )
               oldData.msgTrace
         }
+
+abortAcquisition :: MVar DeviceData -> IO ()
+abortAcquisition data' = do
+  currentData <- readMVar data'
+  appendMsg data' LogLevelInfo "aborting acquisition"
+  commandInOutVoid currentData.proxies.eigerDetector "Abort"
+  commandInOutVoid currentData.proxies.eigerDetector "Disarm"
 
 prepareForMeasurement :: MVar DeviceData -> DeviceInstancePtr -> IO ()
 prepareForMeasurement data' _instance = do
@@ -245,6 +253,10 @@ prepareForMeasurement data' _instance = do
     RunnerStateReadyToMeasure -> appendMsg data' LogLevelDebug "already prepared for measurement, doing nothing"
     _ -> do
       appendMsg data' LogLevelInfo "preparing for measurement"
+
+      streamStatus <- liftIO $ readStateAttribute currentData.proxies.eigerStream
+
+      when (streamStatus == Running) (abortAcquisition data')
 
 numberIsClose :: (Ord a, Num a) => a -> a -> a -> a -> Bool
 numberIsClose a b relTol absTol =
