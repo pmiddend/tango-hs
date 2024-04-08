@@ -9,6 +9,7 @@ module TangoHL
     checkResult,
     readStringAttribute,
     writeIntAttribute,
+    writeDoubleAttribute,
     commandInOutVoid,
     newDeviceProxy,
     resolveTypedProperties,
@@ -170,6 +171,25 @@ writeIntAttribute proxyPtr attributeName newValue = do
             timeStamp = Timeval 0 0,
             dataType = HaskellDevLong64,
             tangoAttributeData = HaskellAttributeDataLongArray (HaskellTangoVarArray 1 newValuePtr)
+          }
+      )
+      $ \newDataPtr ->
+        liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+
+writeDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> Double -> m ()
+writeDoubleAttribute proxyPtr attributeName newValue = do
+  withCString (unpack attributeName) $ \attributeNameC ->
+    with (realToFrac newValue) $ \newValuePtr -> with
+      ( HaskellAttributeData
+          { dataFormat = HaskellScalar,
+            dataQuality = HaskellValid,
+            nbRead = 0,
+            name = attributeNameC,
+            dimX = 1,
+            dimY = 1,
+            timeStamp = Timeval 0 0,
+            dataType = HaskellDevDouble,
+            tangoAttributeData = HaskellAttributeDataDoubleArray (HaskellTangoVarArray 1 newValuePtr)
           }
       )
       $ \newDataPtr ->
