@@ -154,12 +154,16 @@ data MeasuringState = MeasuringState
     triggerSent :: !Bool
   }
 
+newtype PreparingForMeasurementData = PreparingForMeasurementData
+  { collimatorEndTime :: Maybe UTCTime
+  }
+
 data RunnerState
   = RunnerStateUnknownMoving !Text
   | RunnerStateUnknownStatic !Text
   | RunnerStateStoppingChopper !ChopperState
   | RunnerStateMeasuring !MeasuringState
-  | RunnerStatePreparingForMeasurement !(Maybe UTCTime)
+  | RunnerStatePreparingForMeasurement PreparingForMeasurementData
   | RunnerStateReadyToMeasure
   | RunnerStatePreparingToOpenHutch !(Maybe UTCTime)
   | ReadyToOpenHutch
@@ -229,11 +233,33 @@ readDeviceData = do
 readVar :: P11RunnerMonad (MVar DeviceData)
 readVar = gets runnerVar
 
-commandUpdate :: MVar DeviceData -> DeviceInstancePtr -> IO ()
-commandUpdate data' _instance = do
-  currentData <- readMVar data'
-  newState <- calculateState currentData
-  modifyMVar_ data' (\existing -> pure existing {currentRunnerState = newState})
+logToConsole :: Text -> P11RunnerMonad ()
+logToConsole = liftIO . putStrLn
+
+updatePreparingForMeasurement :: PreparingForMeasurementData -> RunnerState -> P11RunnerMonad ()
+updatePreparingForMeasurement (PreparingForMeasurementData {collimatorEndTime}) calculatedState = do
+  now <- liftIO getCurrentTime
+  if maybe False (now <) collimatorEndTime
+    then logToConsole "collimator timeout not expired yet, waiting"
+    else case calculatedState of
+      RunnerStateReadyToMeasure -> do
+        appendMsg LogLevelInfo "colli timeout expired, ready to measure"
+        updateRunnerState RunnerStateReadyToMeasure
+      RunnerStateUnknownMoving reason -> do
+        logToConsole $ "after colli timeout, we are still moving, reason: " <> reason
+      RunnerStateUnknownStatic reason -> do
+        appendMsg LogLevelInfo $
+          "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
+
+commandUpdate :: P11RunnerMonad ()
+commandUpdate = do
+  currentData <- readDeviceData
+  newState <- liftIO $ calculateState currentData
+  case currentData.currentRunnerState of
+    RunnerStatePreparingForMeasurement pfmData ->
+      updatePreparingForMeasurement pfmData newState
+
+-- modifyMVar_ data' (\existing -> pure existing {currentRunnerState = newState})
 
 utcTimeToMillis :: UTCTime -> Int
 utcTimeToMillis t = round (utcTimeToPOSIXSeconds t / 1000)
@@ -329,8 +355,8 @@ fastShutterIsOpen = do
   currentData <- readDeviceData
   liftIO $ readFastShutterOpen currentData.proxies.fastShutter
 
-prepareForMeasurement :: P11RunnerMonad ()
-prepareForMeasurement = do
+commandPrepareForMeasurement :: P11RunnerMonad ()
+commandPrepareForMeasurement = do
   currentData <- readDeviceData
   case currentData.currentRunnerState of
     RunnerStatePreparingForMeasurement _ ->
@@ -390,6 +416,8 @@ prepareForMeasurement = do
       if fastShutterIsOpen'
         then closeFastShutter
         else appendMsg LogLevelDebug (markdownBold "fast shutter" <> markdownPlain " already closed")
+
+      updateRunnerState (RunnerStatePreparingForMeasurement (PreparingForMeasurementData collimatorEndTime))
 
 numberIsClose :: (Ord a, Num a) => a -> a -> a -> a -> Bool
 numberIsClose a b relTol absTol =
@@ -737,12 +765,20 @@ main = do
       ]
       [ ServerCommandVoidVoid
           (CommandName "update")
-          (commandUpdate deviceData),
+          ( \instancePtr ->
+              evalStateT
+                commandUpdate
+                ( P11RunnerState
+                    { runnerVar = deviceData,
+                      runnerInstance = instancePtr
+                    }
+                )
+          ),
         ServerCommandVoidVoid
           (CommandName "prepare_for_measurement")
           ( \instancePtr ->
               evalStateT
-                prepareForMeasurement
+                commandPrepareForMeasurement
                 ( P11RunnerState
                     { runnerVar = deviceData,
                       runnerInstance = instancePtr
