@@ -197,7 +197,7 @@ data DeviceData = DeviceData
     towerSafeDistanceMm :: Double,
     towerMeasurementDistanceMm :: Double,
     desiredCollimatorStatus :: DesiredCollimatorStatus,
-    calculatedRunnerState :: RunnerState,
+    currentRunnerState :: RunnerState,
     colliConfig :: ColliConfig,
     useChopper :: Bool,
     exposureTimeMs :: Double,
@@ -213,6 +213,14 @@ data P11RunnerState = P11RunnerState
 
 type P11RunnerMonad = StateT P11RunnerState IO
 
+updateDeviceData :: (DeviceData -> DeviceData) -> P11RunnerMonad ()
+updateDeviceData f = do
+  runnerVar' <- gets runnerVar
+  liftIO (modifyMVar_ runnerVar' (pure . f))
+
+updateRunnerState :: RunnerState -> P11RunnerMonad ()
+updateRunnerState newState = updateDeviceData (\dd -> dd {currentRunnerState = newState})
+
 readDeviceData :: P11RunnerMonad DeviceData
 readDeviceData = do
   runnerVar' <- gets runnerVar
@@ -225,7 +233,7 @@ commandUpdate :: MVar DeviceData -> DeviceInstancePtr -> IO ()
 commandUpdate data' _instance = do
   currentData <- readMVar data'
   newState <- calculateState currentData
-  modifyMVar_ data' (\existing -> pure existing {calculatedRunnerState = newState})
+  modifyMVar_ data' (\existing -> pure existing {currentRunnerState = newState})
 
 utcTimeToMillis :: UTCTime -> Int
 utcTimeToMillis t = round (utcTimeToPOSIXSeconds t / 1000)
@@ -324,7 +332,7 @@ fastShutterIsOpen = do
 prepareForMeasurement :: P11RunnerMonad ()
 prepareForMeasurement = do
   currentData <- readDeviceData
-  case currentData.calculatedRunnerState of
+  case currentData.currentRunnerState of
     RunnerStatePreparingForMeasurement _ ->
       appendMsg LogLevelDebug (markdownPlain "already preparing for measurement, doing nothing")
     RunnerStateReadyToMeasure ->
@@ -700,7 +708,7 @@ initCallback deviceData instance' = do
                       towerSafeDistanceMm = propTowerSafeDistanceMm,
                       towerMeasurementDistanceMm = 200.0,
                       desiredCollimatorStatus = DesiredIn,
-                      calculatedRunnerState = RunnerStateUnknownMoving "before first connect call",
+                      currentRunnerState = RunnerStateUnknownMoving "before first connect call",
                       useChopper = False,
                       exposureTimeMs = 7.6,
                       numberOfImages = 1000,
