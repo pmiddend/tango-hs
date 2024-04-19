@@ -298,6 +298,7 @@ executable P11RunnerHs
                      , unliftio
                      , time
                      , aeson
+                     , bifunctors
                      , lens
                      , free
                      , transformers

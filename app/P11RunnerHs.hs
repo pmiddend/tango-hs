@@ -15,12 +15,14 @@ import Control.Monad (forM_, when)
 import Control.Monad.Free (Free)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.State.Strict (StateT, evalStateT, get, gets, modify)
-import Data.Aeson (FromJSON (parseJSON), KeyValue ((.=)), ToJSON (toJSON), eitherDecodeFileStrict', object, withObject, (.:))
+import Data.Aeson (FromJSON (parseJSON), KeyValue ((.=)), ToJSON (toJSON), eitherDecode, eitherDecodeFileStrict', eitherDecodeStrict, object, withObject, (.:))
+import Data.Bifunctor (Bifunctor (first, second))
 import Data.Fixed (Pico)
 import qualified Data.List.NonEmpty as NE
 import Data.Sequence (Seq, ViewR (EmptyR, (:>)), viewr, (<|))
 import Data.String (IsString)
 import Data.Text (Text, intercalate, pack, strip, unpack)
+import Data.Text.Encoding (encodeUtf8)
 import Data.Text.IO (putStrLn)
 import qualified Data.Text.Lazy as TL
 import Data.Time (NominalDiffTime, addUTCTime, getCurrentTime, secondsToNominalDiffTime)
@@ -158,15 +160,19 @@ newtype PreparingForMeasurementData = PreparingForMeasurementData
   { collimatorEndTime :: Maybe UTCTime
   }
 
+newtype PreparingToOpenHutchData = PreparingToOpenHutchData
+  { collimatorEndTime :: Maybe UTCTime
+  }
+
 data RunnerState
   = RunnerStateUnknownMoving !Text
   | RunnerStateUnknownStatic !Text
   | RunnerStateStoppingChopper !ChopperState
   | RunnerStateMeasuring !MeasuringState
-  | RunnerStatePreparingForMeasurement PreparingForMeasurementData
+  | RunnerStatePreparingForMeasurement !PreparingForMeasurementData
   | RunnerStateReadyToMeasure
-  | RunnerStatePreparingToOpenHutch !(Maybe UTCTime)
-  | ReadyToOpenHutch
+  | RunnerStatePreparingToOpenHutch !PreparingToOpenHutchData
+  | RunnerStateReadyToOpenHutch
 
 data Proxies = Proxies
   { detectorTower :: !DeviceProxyPtr,
@@ -246,10 +252,31 @@ updatePreparingForMeasurement (PreparingForMeasurementData {collimatorEndTime}) 
         appendMsg LogLevelInfo "colli timeout expired, ready to measure"
         updateRunnerState RunnerStateReadyToMeasure
       RunnerStateUnknownMoving reason -> do
-        logToConsole $ "after colli timeout, we are still moving, reason: " <> reason
+        logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
       RunnerStateUnknownStatic reason -> do
-        appendMsg LogLevelInfo $
+        logToConsole $
           "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
+      otherState -> do
+        logToConsole "timeout for preparing to for measurement expired, but we determined a weird state state, switching to that state"
+        updateRunnerState otherState
+
+updatePreparingToOpenHutch :: PreparingToOpenHutchData -> RunnerState -> P11RunnerMonad ()
+updatePreparingToOpenHutch (PreparingToOpenHutchData {collimatorEndTime}) calculatedState = do
+  now <- liftIO getCurrentTime
+  if maybe False (now <) collimatorEndTime
+    then logToConsole "collimator timeout not expired yet, waiting"
+    else case calculatedState of
+      RunnerStateReadyToOpenHutch -> do
+        appendMsg LogLevelInfo "colli timeout expired, ready to open hutch"
+        updateRunnerState RunnerStateReadyToOpenHutch
+      RunnerStateUnknownMoving reason -> do
+        logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
+      RunnerStateUnknownStatic reason -> do
+        logToConsole $
+          "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
+      otherState -> do
+        logToConsole "timeout for preparing to for measurement expired, but we determined a weird state state, switching to that state"
+        updateRunnerState otherState
 
 commandUpdate :: P11RunnerMonad ()
 commandUpdate = do
@@ -258,6 +285,9 @@ commandUpdate = do
   case currentData.currentRunnerState of
     RunnerStatePreparingForMeasurement pfmData ->
       updatePreparingForMeasurement pfmData newState
+    RunnerStatePreparingToOpenHutch pfmData ->
+      updatePreparingToOpenHutch pfmData newState
+    _otherState -> pure ()
 
 -- modifyMVar_ data' (\existing -> pure existing {currentRunnerState = newState})
 
@@ -320,14 +350,19 @@ abortAcquisition = do
   liftIO $ commandInOutVoid currentData.proxies.eigerDetector "Abort"
   liftIO $ commandInOutVoid currentData.proxies.eigerDetector "Disarm"
 
-moveColliToDesired :: P11RunnerMonad ()
-moveColliToDesired = do
+moveColliTo :: DesiredCollimatorStatus -> P11RunnerMonad ()
+moveColliTo desired = do
   currentData <- readDeviceData
-  let positionY = if currentData.desiredCollimatorStatus == DesiredIn then currentData.colliConfig.inY else currentData.colliConfig.outY
-      positionZ = if currentData.desiredCollimatorStatus == DesiredIn then currentData.colliConfig.inZ else currentData.colliConfig.outZ
+  let positionY = if desired == DesiredIn then currentData.colliConfig.inY else currentData.colliConfig.outY
+      positionZ = if desired == DesiredIn then currentData.colliConfig.inZ else currentData.colliConfig.outZ
   appendMsg LogLevelInfo ("moving " <> markdownBold "collimator" <> ", this might take a while")
   liftIO $ writeDoubleAttribute currentData.proxies.collimatorY "Position" positionY
   liftIO $ writeDoubleAttribute currentData.proxies.collimatorZ "Position" positionZ
+
+moveColliToDesired :: P11RunnerMonad ()
+moveColliToDesired = do
+  currentData <- readDeviceData
+  moveColliTo currentData.desiredCollimatorStatus
 
 readDetectorDistance :: (MonadIO m) => DeviceData -> m Double
 readDetectorDistance currentData = liftIO $ readDoubleAttribute currentData.proxies.detectorTower "DetectorDistance"
@@ -338,6 +373,10 @@ writeDetectorDistance currentData distance = liftIO $ writeDoubleAttribute curre
 detectorInMeasurementDistance :: DeviceData -> Double -> Bool
 detectorInMeasurementDistance currentData towerDistanceMm =
   numberIsCloseAbs towerDistanceMm currentData.towerMeasurementDistanceMm currentData.towerDistanceToleranceMm
+
+detectorInSafeDistance :: DeviceData -> Double -> Bool
+detectorInSafeDistance currentData towerDistanceMm =
+  numberIsCloseAbs towerDistanceMm currentData.towerSafeDistanceMm currentData.towerDistanceToleranceMm
 
 raiseShield :: P11RunnerMonad ()
 raiseShield = do
@@ -418,6 +457,65 @@ commandPrepareForMeasurement = do
         else appendMsg LogLevelDebug (markdownBold "fast shutter" <> markdownPlain " already closed")
 
       updateRunnerState (RunnerStatePreparingForMeasurement (PreparingForMeasurementData collimatorEndTime))
+
+commandPrepareToOpenHutch :: P11RunnerMonad ()
+commandPrepareToOpenHutch = do
+  currentData <- readDeviceData
+  case currentData.currentRunnerState of
+    RunnerStatePreparingToOpenHutch _ ->
+      appendMsg LogLevelDebug (markdownPlain "already ready to open hutch, doing nothing")
+    RunnerStateReadyToOpenHutch ->
+      appendMsg LogLevelDebug (markdownPlain "already prepared for measurement, doing nothing")
+    _otherState -> do
+      appendMsg LogLevelInfo (markdownPlain "preparing to open hutch")
+
+      shieldIsDown' <- shieldIsDown
+
+      if shieldIsDown'
+        then raiseShield
+        else appendMsg LogLevelDebug (markdownBold "shield" <> markdownPlain " already up")
+
+      fastShutterIsOpen' <- fastShutterIsOpen
+
+      if fastShutterIsOpen'
+        then closeFastShutter
+        else appendMsg LogLevelDebug (markdownBold "fast shutter" <> markdownPlain " already closed")
+
+      streamStatus <- liftIO $ readStateAttribute currentData.proxies.eigerStream
+
+      case streamStatus of
+        Running -> abortAcquisition
+        other ->
+          appendMsg
+            LogLevelInfo
+            (markdownBold "stream" <> " not " <> markdownEmph "busy" <> " but " <> packShow other <> ", not aborting")
+
+      colliStatus <-
+        checkCollimator
+          currentData.proxies.collimatorY
+          currentData.proxies.collimatorZ
+          currentData.colliConfig
+          DesiredOut
+
+      collimatorEndTime <- case colliStatus of
+        AtLeastOneColliNotDesired _whichColliAxisIsNotDesired -> do
+          appendMsg LogLevelInfo ("moving " <> markdownBold "collimator" <> " out")
+          moveColliTo DesiredOut
+          now <- liftIO getCurrentTime
+          pure (Just (addUTCTime currentData.colliConfig.movementTimeoutS now))
+        BothCollisInDesired -> pure Nothing
+
+      towerDistanceMm <- readDetectorDistance currentData
+
+      if detectorInSafeDistance currentData towerDistanceMm
+        then appendMsg LogLevelInfo (markdownBold "tower" <> " already in right position")
+        else do
+          appendMsg
+            LogLevelInfo
+            ("moving " <> markdownBold "tower" <> " to " <> markdownEmph (packShow currentData.towerSafeDistanceMm) <> "mm")
+          writeDetectorDistance currentData currentData.towerSafeDistanceMm
+
+      updateRunnerState (RunnerStatePreparingToOpenHutch (PreparingToOpenHutchData collimatorEndTime))
 
 numberIsClose :: (Ord a, Num a) => a -> a -> a -> a -> Bool
 numberIsClose a b relTol absTol =
@@ -670,28 +768,33 @@ data P11RunnerProperties = P11RunnerProperties
     propColliToleranceZ :: Double,
     propTowerSafeDistanceMm :: Double,
     propTowerDistanceToleranceMm :: Double,
-    propColliConfig :: FilePath,
+    propColliConfig :: ColliConfigJson,
     propColliMovementTimeoutS :: Double
   }
 
-readMaybeText :: Text -> Maybe Double
-readMaybeText = readMaybe . unpack
+readMaybeText :: Text -> Either Text Double
+readMaybeText x = case readMaybe (unpack x) of
+  Nothing -> Left "not a valid number"
+  Just v -> Right v
+
+readColliConfigProp :: Text -> Either Text ColliConfigJson
+readColliConfigProp = first pack . eitherDecodeStrict . encodeUtf8
 
 p11RunnerProperties :: PropApplicative P11RunnerProperties
 p11RunnerProperties =
   P11RunnerProperties
-    <$> readTypedProperty "detector_tower_identifier" (Just . tangoUrlFromText)
-    <*> readTypedProperty "chopper_identifier" (Just . tangoUrlFromText)
-    <*> readTypedProperty "colli_motor_identifier_y" (Just . tangoUrlFromText)
-    <*> readTypedProperty "colli_motor_identifier_z" (Just . tangoUrlFromText)
-    <*> readTypedProperty "eiger_stream_identifier" (Just . tangoUrlFromText)
-    <*> readTypedProperty "fast_shutter_identifier" (Just . tangoUrlFromText)
-    <*> readTypedProperty "detector_identifier" (Just . tangoUrlFromText)
+    <$> readTypedProperty "detector_tower_identifier" tangoUrlFromText
+    <*> readTypedProperty "chopper_identifier" tangoUrlFromText
+    <*> readTypedProperty "colli_motor_identifier_y" tangoUrlFromText
+    <*> readTypedProperty "colli_motor_identifier_z" tangoUrlFromText
+    <*> readTypedProperty "eiger_stream_identifier" tangoUrlFromText
+    <*> readTypedProperty "fast_shutter_identifier" tangoUrlFromText
+    <*> readTypedProperty "detector_identifier" tangoUrlFromText
     <*> readTypedProperty "colli_position_tolerance_y" readMaybeText
     <*> readTypedProperty "colli_position_tolerance_z" readMaybeText
     <*> readTypedProperty "detector_tower_safe_distance_mm" readMaybeText
     <*> readTypedProperty "detector_distance_tolerance_mm" readMaybeText
-    <*> readTypedProperty "colli_config" (Just . unpack)
+    <*> readTypedProperty "colli_config" readColliConfigProp
     <*> readTypedProperty "collimator_movement_timeout_s" readMaybeText
 
 initCallback :: MVar DeviceData -> DeviceInstancePtr -> IO ()
@@ -726,26 +829,22 @@ initCallback deviceData instance' = do
             <*> newDeviceProxy propEigerStreamIdentifier
             <*> newDeviceProxy propFastShutterIdentifier
             <*> newDeviceProxy propDetectorIdentifier
-        colliConfig <- readColliConfig propColliConfig
-        case colliConfig of
-          Left e -> error $ "invalid colli config file \"" <> propColliConfig <> "\": " <> unpack e
-          Right colliConfig' -> do
-            let deviceDataContent =
-                  DeviceData
-                    { proxies = proxies,
-                      towerSafeDistanceMm = propTowerSafeDistanceMm,
-                      towerMeasurementDistanceMm = 200.0,
-                      desiredCollimatorStatus = DesiredIn,
-                      currentRunnerState = RunnerStateUnknownMoving "before first connect call",
-                      useChopper = False,
-                      exposureTimeMs = 7.6,
-                      numberOfImages = 1000,
-                      colliConfig = colliConfigFromJson colliConfig' propColliMovementTimeoutS propColliToleranceY propColliToleranceZ,
-                      towerDistanceToleranceMm = propTowerDistanceToleranceMm,
-                      msgTrace = mempty
-                    }
-            putMVar deviceData deviceDataContent
-            putStrLn "initializing successful"
+        let deviceDataContent =
+              DeviceData
+                { proxies = proxies,
+                  towerSafeDistanceMm = propTowerSafeDistanceMm,
+                  towerMeasurementDistanceMm = 200.0,
+                  desiredCollimatorStatus = DesiredIn,
+                  currentRunnerState = RunnerStateUnknownMoving "before first connect call",
+                  useChopper = False,
+                  exposureTimeMs = 7.6,
+                  numberOfImages = 1000,
+                  colliConfig = colliConfigFromJson propColliConfig propColliMovementTimeoutS propColliToleranceY propColliToleranceZ,
+                  towerDistanceToleranceMm = propTowerDistanceToleranceMm,
+                  msgTrace = mempty
+                }
+        putMVar deviceData deviceDataContent
+        putStrLn "initializing successful"
 
 readTestAttribute :: DeviceInstancePtr -> IO Text
 readTestAttribute _ = pure "lol"
@@ -779,6 +878,17 @@ main = do
           ( \instancePtr ->
               evalStateT
                 commandPrepareForMeasurement
+                ( P11RunnerState
+                    { runnerVar = deviceData,
+                      runnerInstance = instancePtr
+                    }
+                )
+          ),
+        ServerCommandVoidVoid
+          (CommandName "prepare_to_open_hutch")
+          ( \instancePtr ->
+              evalStateT
+                commandPrepareToOpenHutch
                 ( P11RunnerState
                     { runnerVar = deviceData,
                       runnerInstance = instancePtr

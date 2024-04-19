@@ -48,18 +48,19 @@ import Control.Exception (Exception, bracket, throw)
 import Control.Monad (fail, forM_, mapM_, void, when, (>>=))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Bool (Bool)
+import Data.Bool (Bool, (||))
 import Data.Char (Char)
 import Data.Either (Either (Left, Right))
 import Data.Eq (Eq ((==)), (/=))
+import Data.Foldable (any)
 import Data.Function (($), (.))
 import Data.Functor (Functor, (<$>))
 import Data.Int (Int, Int16, Int32, Int64)
-import Data.List (singleton)
-import Data.Maybe (Maybe (Just, Nothing))
+import Data.List (drop, length, singleton)
+import Data.Maybe (Maybe (Just, Nothing), listToMaybe, maybe)
 import Data.Semigroup ((<>))
 import Data.String (String, unlines)
-import Data.Text (Text, pack, strip, unpack)
+import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, strip, unpack)
 import Data.Text.IO (putStrLn)
 import Data.Traversable (traverse)
 import Data.Word (Word16, Word32, Word64, Word8)
@@ -134,11 +135,20 @@ checkResult action = do
 
 newtype TangoUrl = TangoUrl Text
 
-tangoUrlFromText :: Text -> TangoUrl
-tangoUrlFromText = TangoUrl
+tangoUrlFromText :: Text -> Either Text TangoUrl
+tangoUrlFromText url =
+  let tangoUrlFromText' url' =
+        let urlComponents = splitOn "/" url'
+         in if length urlComponents /= 3 || any null urlComponents
+              then Left $ "\"" <> url <> "\" is not a valid tango URL: has to be of the form \"[tango://host:port/]domain/family/member\""
+              else Right (TangoUrl url)
+   in tangoUrlFromText' $
+        if "tango://" `isPrefixOf` url
+          then intercalate "/" $ drop 3 (splitOn "/" url)
+          else url
 
 newDeviceProxy :: forall m. (UnliftIO.MonadUnliftIO m) => TangoUrl -> m DeviceProxyPtr
-newDeviceProxy (TangoUrl url) =
+newDeviceProxy (TangoUrl url) = do
   alloca $ \proxyPtrPtr -> do
     withCString (unpack url) $ \proxyName -> do
       liftIO $ checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
@@ -447,15 +457,15 @@ tangoReadProperty instance' (PropertyName n) = do
 
 data TypedProperty a = TypedProperty
   { typedPropName :: PropertyName,
-    typedPropReader :: Text -> Maybe a
+    typedPropReader :: Text -> Either Text a
   }
   deriving (Functor)
 
-readTypedProperty :: Text -> (Text -> Maybe a) -> Ap TypedProperty a
+readTypedProperty :: Text -> (Text -> Either Text a) -> Ap TypedProperty a
 readTypedProperty name reader = liftAp $ TypedProperty (PropertyName name) reader
 
 readTypedTextProperty :: Text -> Ap TypedProperty Text
-readTypedTextProperty name = readTypedProperty name Just
+readTypedTextProperty name = readTypedProperty name Right
 
 type PropApplicative = Ap TypedProperty
 
@@ -469,8 +479,11 @@ resolveTypedProperties' ptr = runAp deconstruct
     deconstruct (TypedProperty {typedPropName = PropertyName typedPropName', typedPropReader}) = do
       propValueText <- liftIO $ tangoReadProperty ptr (PropertyName typedPropName')
       case typedPropReader propValueText of
-        Nothing -> throwError $ "error parsing property \"" <> typedPropName' <> "\": " <> propValueText
-        Just propValue' -> pure propValue'
+        Left error' ->
+          if propValueText == ""
+            then throwError $ "error parsing empty property \"" <> typedPropName' <> "\": " <> error'
+            else throwError $ "error parsing property \"" <> typedPropName' <> "\": " <> propValueText <> ", error is " <> error'
+        Right propValue' -> pure propValue'
 
 resolveTypedProperties :: DeviceInstancePtr -> PropApplicative a -> IO (Either Text a)
 resolveTypedProperties ptr myAp = runExceptT (resolveTypedProperties' ptr myAp)
