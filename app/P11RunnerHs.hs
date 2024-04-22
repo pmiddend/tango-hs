@@ -768,7 +768,7 @@ data P11RunnerProperties = P11RunnerProperties
     propColliToleranceZ :: Double,
     propTowerSafeDistanceMm :: Double,
     propTowerDistanceToleranceMm :: Double,
-    propColliConfig :: ColliConfigJson,
+    propColliConfigFile :: FilePath,
     propColliMovementTimeoutS :: Double
   }
 
@@ -776,9 +776,6 @@ readMaybeText :: Text -> Either Text Double
 readMaybeText x = case readMaybe (unpack x) of
   Nothing -> Left "not a valid number"
   Just v -> Right v
-
-readColliConfigProp :: Text -> Either Text ColliConfigJson
-readColliConfigProp = first pack . eitherDecodeStrict . encodeUtf8
 
 p11RunnerProperties :: PropApplicative P11RunnerProperties
 p11RunnerProperties =
@@ -794,7 +791,7 @@ p11RunnerProperties =
     <*> readTypedProperty "colli_position_tolerance_z" readMaybeText
     <*> readTypedProperty "detector_tower_safe_distance_mm" readMaybeText
     <*> readTypedProperty "detector_distance_tolerance_mm" readMaybeText
-    <*> readTypedProperty "colli_config" readColliConfigProp
+    <*> readTypedProperty "colli_config" (Right . unpack)
     <*> readTypedProperty "collimator_movement_timeout_s" readMaybeText
 
 initCallback :: MVar DeviceData -> DeviceInstancePtr -> IO ()
@@ -812,7 +809,7 @@ initCallback deviceData instance' = do
             propEigerStreamIdentifier,
             propFastShutterIdentifier,
             propDetectorIdentifier,
-            propColliConfig,
+            propColliConfigFile,
             propTowerSafeDistanceMm,
             propTowerDistanceToleranceMm,
             propColliToleranceY,
@@ -829,22 +826,26 @@ initCallback deviceData instance' = do
             <*> newDeviceProxy propEigerStreamIdentifier
             <*> newDeviceProxy propFastShutterIdentifier
             <*> newDeviceProxy propDetectorIdentifier
-        let deviceDataContent =
-              DeviceData
-                { proxies = proxies,
-                  towerSafeDistanceMm = propTowerSafeDistanceMm,
-                  towerMeasurementDistanceMm = 200.0,
-                  desiredCollimatorStatus = DesiredIn,
-                  currentRunnerState = RunnerStateUnknownMoving "before first connect call",
-                  useChopper = False,
-                  exposureTimeMs = 7.6,
-                  numberOfImages = 1000,
-                  colliConfig = colliConfigFromJson propColliConfig propColliMovementTimeoutS propColliToleranceY propColliToleranceZ,
-                  towerDistanceToleranceMm = propTowerDistanceToleranceMm,
-                  msgTrace = mempty
-                }
-        putMVar deviceData deviceDataContent
-        putStrLn "initializing successful"
+        colliConfig <- readColliConfig propColliConfigFile
+        case colliConfig of
+          Left e -> error $ "invalid colli config file \"" <> propColliConfigFile <> "\": " <> unpack e
+          Right colliConfig' -> do
+            let deviceDataContent =
+                  DeviceData
+                    { proxies = proxies,
+                      towerSafeDistanceMm = propTowerSafeDistanceMm,
+                      towerMeasurementDistanceMm = 200.0,
+                      desiredCollimatorStatus = DesiredIn,
+                      currentRunnerState = RunnerStateUnknownMoving "before first connect call",
+                      useChopper = False,
+                      exposureTimeMs = 7.6,
+                      numberOfImages = 1000,
+                      colliConfig = colliConfigFromJson colliConfig' propColliMovementTimeoutS propColliToleranceY propColliToleranceZ,
+                      towerDistanceToleranceMm = propTowerDistanceToleranceMm,
+                      msgTrace = mempty
+                    }
+            putMVar deviceData deviceDataContent
+            putStrLn "initializing successful"
 
 readTestAttribute :: DeviceInstancePtr -> IO Text
 readTestAttribute _ = pure "lol"
