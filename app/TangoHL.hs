@@ -10,6 +10,7 @@ module TangoHL
     readStringAttribute,
     writeIntAttribute,
     writeDoubleAttribute,
+    writeInstanceState,
     commandInOutVoid,
     newDeviceProxy,
     resolveTypedProperties,
@@ -112,6 +113,7 @@ import Tango.Server
     tango_server_add_property,
     tango_server_init,
     tango_server_read_property,
+    tango_server_set_state,
     tango_server_start,
   )
 import Text.Show (Show, show)
@@ -313,7 +315,7 @@ readBoolAttribute proxyPtr attributeNameHaskell =
         HaskellAttributeDataBoolArray (HaskellTangoVarArray {varArrayValues}) -> do
           firstValue <- peek varArrayValues
           tango_free_AttributeData haskellAttributeDataPtr
-          pure (firstValue == 0)
+          pure (firstValue /= 0)
         _ -> do
           tango_free_AttributeData haskellAttributeDataPtr
           error "invalid type of attribute, not a bool"
@@ -487,3 +489,7 @@ resolveTypedProperties' ptr = runAp deconstruct
 
 resolveTypedProperties :: DeviceInstancePtr -> PropApplicative a -> IO (Either Text a)
 resolveTypedProperties ptr myAp = runExceptT (resolveTypedProperties' ptr myAp)
+
+writeInstanceState :: (MonadIO m) => DeviceInstancePtr -> HaskellTangoDevState -> m ()
+writeInstanceState instance' state' =
+  liftIO $ tango_server_set_state instance' (fromIntegral (fromEnum state'))
