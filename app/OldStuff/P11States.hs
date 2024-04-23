@@ -1,42 +1,5 @@
 module P11States where
 
-data DetectorTowerState
-  = DetectorTowerMoving
-  | DetectorTowerInSafe
-  | DetectorTowerInMeasurement
-  | DetectorTowerOtherPosition Double
-
-data DetectorTowerConfig = DetectorTowerConfig
-  { towerConfigSafeDistanceMm :: Double,
-    towerConfigMeasurementDistanceMm :: Double,
-    towerConfigToleranceMm :: Double
-  }
-
-detectorTowerUpdate :: (MonadIO m) => DeviceProxyPtr -> DetectorTowerConfig -> m DetectorTowerState
-detectorTowerUpdate towerProxy towerConfig = do
-  tangoState <- liftIO $ readStateAttribute towerProxy
-  case tangoState of
-    On -> do
-      towerDistanceMm <- liftIO $ readDoubleAttribute towerProxy "DetectorDistance"
-      if numberIsCloseAbs towerDistanceMm towerConfig . towerConfigMeasurementDistanceMm towerConfig . towerConfigToleranceMm
-        then pure DetectorTowerInMeasurement
-        else
-          if numberIsCloseAbs towerDistanceMm towerConfig . towerConfigSafeDistanceMm towerConfig . towerConfigToleranceMm
-            then pure DetectorTowerInSafe
-            else pure (DetectorTowerOtherPosition towerDistanceMm)
-    _otherState -> pure DetectorTowerMoving
-
-detectorTowerMoveTo :: (MonadIO m) => DeviceProxyPtr -> Double -> m DetectorTowerState
-detectorTowerMoveTo towerProxy distance = do
-  liftIO $ writeDoubleAttribute towerProxy "DetectorDistance" distance
-  pure DetectorTowerMoving
-
-detectorTowerMoveToSafe :: (MonadIO m) => DeviceProxyPtr -> DetectorTowerConfig -> m DetectorTowerState
-detectorTowerMoveToSafe towerProxy towerConfig = detectorTowerMoveTo towerProxy towerConfig . towerConfigSafeDistanceMm
-
-detectorTowerMoveToMeasurement :: (MonadIO m) => DeviceProxyPtr -> DetectorTowerConfig -> m DetectorTowerState
-detectorTowerMoveToMeasurement towerProxy towerConfig = detectorTowerMoveTo towerProxy towerConfig . towerConfigMeasurementDistanceMm
-
 data ColliFinishedData = ColliFinishedData
   { colliFinishedInDesired :: Bool,
     colliFinishedOut :: Bool

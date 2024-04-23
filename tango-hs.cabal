@@ -48,6 +48,9 @@ library
 executable P11RunnerHs
     import:            warnings
     main-is:           P11Runner/Main.hs
+    other-modules:     P11Runner.DetectorTowerState
+                     , P11Runner.Util
+                     , P11Runner.Markdown
     build-depends:     base
                      , text
                      , derive-storable

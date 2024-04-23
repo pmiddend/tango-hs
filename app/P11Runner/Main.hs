@@ -37,6 +37,9 @@ import Foreign.Marshal.Alloc (free, malloc)
 import Foreign.Marshal.Utils (new)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
 import Foreign.Storable (peek, poke)
+import P11Runner.DetectorTowerState (DetectorTowerConfig (..), DetectorTowerState, detectorTowerInMeasurementDistance, detectorTowerInSafeDistance, detectorTowerIsMoving, detectorTowerMoveToMeasurement, detectorTowerMoveToSafe, detectorTowerUpdate)
+import P11Runner.Markdown (Markdown, markdownBold, markdownEmph, markdownPlain)
+import P11Runner.Util (numberIsClose, numberIsCloseAbs)
 import System.Environment (getArgs, getProgName)
 import Tango.Common
   ( HaskellAttrWriteType (Read, ReadWrite),
@@ -213,15 +216,14 @@ instance ToJSON Message where
 
 data DeviceData = DeviceData
   { proxies :: Proxies,
-    towerSafeDistanceMm :: Double,
-    towerMeasurementDistanceMm :: Double,
+    detectorTowerConfig :: DetectorTowerConfig,
     desiredCollimatorStatus :: DesiredCollimatorStatus,
     currentRunnerState :: RunnerState,
+    currentDetectorTowerState :: DetectorTowerState,
     colliConfig :: ColliConfig,
     useChopper :: Bool,
     exposureTimeMs :: Double,
     numberOfImages :: Int,
-    towerDistanceToleranceMm :: Double,
     msgTrace :: Seq Message
   }
 
@@ -362,15 +364,6 @@ appendMsg logLevel' text' = do
   var <- readVar
   liftIO (appendMsgVar var logLevel' text')
 
-markdownPlain :: Text -> Text
-markdownPlain = id
-
-markdownBold :: (Semigroup a, IsString a) => a -> a
-markdownBold x = "**" <> x <> "**"
-
-markdownEmph :: (Semigroup a, IsString a) => a -> a
-markdownEmph x = "*" <> x <> "*"
-
 closeFastShutter :: P11RunnerMonad ()
 closeFastShutter = do
   currentData <- readDeviceData
@@ -397,20 +390,6 @@ moveColliToDesired :: P11RunnerMonad ()
 moveColliToDesired = do
   currentData <- readDeviceData
   moveColliTo currentData.desiredCollimatorStatus
-
-readDetectorDistance :: (MonadIO m) => DeviceData -> m Double
-readDetectorDistance currentData = liftIO $ readDoubleAttribute currentData.proxies.detectorTower "DetectorDistance"
-
-writeDetectorDistance :: (MonadIO m) => DeviceData -> Double -> m ()
-writeDetectorDistance currentData distance = liftIO $ writeDoubleAttribute currentData.proxies.detectorTower "DetectorDistance" distance
-
-detectorInMeasurementDistance :: DeviceData -> Double -> Bool
-detectorInMeasurementDistance currentData towerDistanceMm =
-  numberIsCloseAbs towerDistanceMm currentData.towerMeasurementDistanceMm currentData.towerDistanceToleranceMm
-
-detectorInSafeDistance :: DeviceData -> Double -> Bool
-detectorInSafeDistance currentData towerDistanceMm =
-  numberIsCloseAbs towerDistanceMm currentData.towerSafeDistanceMm currentData.towerDistanceToleranceMm
 
 raiseShield :: P11RunnerMonad ()
 raiseShield = do
@@ -465,18 +444,8 @@ commandPrepareForMeasurement = do
           pure (Just (addUTCTime currentData.colliConfig.movementTimeoutS now))
         BothCollisInDesired -> pure Nothing
 
-      towerDistanceMm <- readDetectorDistance currentData
-
-      if detectorInMeasurementDistance currentData towerDistanceMm
-        then
-          appendMsg
-            LogLevelInfo
-            (markdownBold "tower" <> " already in right position")
-        else do
-          appendMsg
-            LogLevelInfo
-            ("moving " <> markdownBold "tower" <> " to " <> markdownEmph (packShow currentData.towerMeasurementDistanceMm) <> "mm")
-          writeDetectorDistance currentData currentData.towerMeasurementDistanceMm
+      (newState, log) <- detectorTowerMoveToMeasurement currentData.proxies.detectorTower currentData.detectorTowerConfig
+      appendMsg LogLevelInfo log
 
       shieldIsDown' <- shieldIsDown
 
@@ -539,24 +508,10 @@ commandPrepareToOpenHutch = do
           pure (Just (addUTCTime currentData.colliConfig.movementTimeoutS now))
         BothCollisInDesired -> pure Nothing
 
-      towerDistanceMm <- readDetectorDistance currentData
-
-      if detectorInSafeDistance currentData towerDistanceMm
-        then appendMsg LogLevelInfo (markdownBold "tower" <> " already in right position")
-        else do
-          appendMsg
-            LogLevelInfo
-            ("moving " <> markdownBold "tower" <> " to " <> markdownEmph (packShow currentData.towerSafeDistanceMm) <> "mm")
-          writeDetectorDistance currentData currentData.towerSafeDistanceMm
+      (newState, log) <- detectorTowerMoveToSafe currentData.proxies.detectorTower currentData.detectorTowerConfig
+      appendMsg LogLevelInfo log
 
       updateRunnerState (RunnerStatePreparingToOpenHutch (PreparingToOpenHutchData collimatorEndTime))
-
-numberIsClose :: (Ord a, Num a) => a -> a -> a -> a -> Bool
-numberIsClose a b relTol absTol =
-  abs (a - b) <= max (relTol * max (abs a) (abs b)) absTol
-
-numberIsCloseAbs :: (Ord a, Fractional a) => a -> a -> a -> Bool
-numberIsCloseAbs a b = numberIsClose a b 1e-9
 
 flippedEvalState :: (Monad m) => s -> StateT s m a -> m a
 flippedEvalState m initial = evalStateT initial m
@@ -664,25 +619,27 @@ calculateState
                     useChopper,
                     exposureTimeMs,
                     numberOfImages,
-                    towerSafeDistanceMm,
-                    towerMeasurementDistanceMm,
+                    detectorTowerConfig,
+                    currentDetectorTowerState,
                     desiredCollimatorStatus,
-                    towerDistanceToleranceMm,
                     colliConfig
                   }
                 ) = do
-    towerState <- readStateAttribute detectorTower
     chopperState <- readStateAttribute chopper
     shieldIsDown' <- readBoolAttribute detectorTower "ShieldIsDown"
     shieldIsUp <- readBoolAttribute detectorTower "ShieldIsUp"
     collimatorYState <- readStateAttribute collimatorY
     collimatorZState <- readStateAttribute collimatorZ
-    if towerState /= On || collimatorYState == Moving || collimatorZState == Moving || chopperState /= On || shieldIsUp == shieldIsDown'
+    if detectorTowerIsMoving currentDetectorTowerState
+      || collimatorYState == Moving
+      || collimatorZState == Moving
+      || chopperState /= On
+      || shieldIsUp == shieldIsDown'
       then
         pure $
           RunnerStateUnknownMoving $
             "tower state (has to be On)) is "
-              <> packShow towerState
+              <> packShow currentDetectorTowerState
               <> ", collimator y/z movement states (have to be non-moving) are "
               <> packShow collimatorYState
               <> "/"
@@ -695,8 +652,7 @@ calculateState
               <> packShow shieldIsUp
       else flippedEvalState ["nothing is moving"] do
         let addMessage message = modify (message :)
-        towerDistanceMm <- readDetectorDistance currentData
-        if detectorInMeasurementDistance currentData towerDistanceMm
+        if detectorTowerInMeasurementDistance currentDetectorTowerState
           then do
             addMessage "detector tower is in measuring distance"
             colliResult <- checkCollimator collimatorY collimatorZ colliConfig desiredCollimatorStatus
@@ -763,16 +719,11 @@ calculateState
                                           )
                                       )
           else
-            if not (numberIsCloseAbs towerDistanceMm towerSafeDistanceMm towerDistanceToleranceMm)
+            if not (detectorTowerInSafeDistance currentDetectorTowerState)
               then
                 finishUnknownStatic
                   ( ", but the tower is neither in the safe distance nor in the measurement distance: "
-                      <> packShow towerDistanceMm
-                      <> " (safe distance is "
-                      <> packShow towerSafeDistanceMm
-                      <> ", measurement distance is "
-                      <> packShow towerMeasurementDistanceMm
-                      <> ")"
+                      <> packShow currentDetectorTowerState
                   )
               else do
                 addMessage "tower is in safe distance"
@@ -864,18 +815,24 @@ initCallback deviceData instance' = do
         case colliConfig of
           Left e -> error $ "invalid colli config file \"" <> propColliConfigFile <> "\": " <> unpack e
           Right colliConfig' -> do
+            let detectorTowerConfig =
+                  DetectorTowerConfig
+                    { towerConfigSafeDistanceMm = propTowerSafeDistanceMm,
+                      towerConfigMeasurementDistanceMm = 200.0,
+                      towerConfigToleranceMm = propTowerDistanceToleranceMm
+                    }
+            towerState <- detectorTowerUpdate proxies.detectorTower detectorTowerConfig
             let deviceDataContent =
                   DeviceData
                     { proxies = proxies,
-                      towerSafeDistanceMm = propTowerSafeDistanceMm,
-                      towerMeasurementDistanceMm = 200.0,
                       desiredCollimatorStatus = DesiredIn,
                       currentRunnerState = RunnerStateUnknownMoving "before first connect call",
+                      detectorTowerConfig = detectorTowerConfig,
+                      currentDetectorTowerState = towerState,
                       useChopper = False,
                       exposureTimeMs = 7.6,
                       numberOfImages = 1000,
                       colliConfig = colliConfigFromJson colliConfig' propColliMovementTimeoutS propColliToleranceY propColliToleranceZ,
-                      towerDistanceToleranceMm = propTowerDistanceToleranceMm,
                       msgTrace = mempty
                     }
             putMVar deviceData deviceDataContent

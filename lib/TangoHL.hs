@@ -40,6 +40,7 @@ module TangoHL
     InitedServer,
     readTypedProperty,
     readTypedTextProperty,
+    HaskellTangoDevState (..),
   )
 where
 
@@ -82,7 +83,7 @@ import Tango.Common
     HaskellTangoAttributeData (HaskellAttributeDataBoolArray, HaskellAttributeDataDoubleArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStateArray, HaskellAttributeDataStringArray, HaskellAttributeDataULong64Array, HaskellAttributeDataUShortArray),
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
-    HaskellTangoDevState,
+    HaskellTangoDevState (..),
     HaskellTangoVarArray (..),
     Timeval (..),
     tango_command_inout,
