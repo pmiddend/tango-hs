@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonMergeJobUpdateOutput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonMergeJobUpdateOutput
-instance Show JsonMergeJobUpdateOutput
-instance Eq JsonMergeJobUpdateOutput
-instance FromJSON JsonMergeJobUpdateOutput
-instance ToJSON JsonMergeJobUpdateOutput

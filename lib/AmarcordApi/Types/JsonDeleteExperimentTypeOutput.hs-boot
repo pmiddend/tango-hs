@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonDeleteExperimentTypeOutput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonDeleteExperimentTypeOutput
-instance Show JsonDeleteExperimentTypeOutput
-instance Eq JsonDeleteExperimentTypeOutput
-instance FromJSON JsonDeleteExperimentTypeOutput
-instance ToJSON JsonDeleteExperimentTypeOutput

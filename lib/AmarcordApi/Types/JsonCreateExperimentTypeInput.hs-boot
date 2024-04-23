@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonCreateExperimentTypeInput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonCreateExperimentTypeInput
-instance Show JsonCreateExperimentTypeInput
-instance Eq JsonCreateExperimentTypeInput
-instance FromJSON JsonCreateExperimentTypeInput
-instance ToJSON JsonCreateExperimentTypeInput

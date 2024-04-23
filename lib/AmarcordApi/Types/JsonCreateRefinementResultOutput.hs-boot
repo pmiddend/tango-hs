@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonCreateRefinementResultOutput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonCreateRefinementResultOutput
-instance Show JsonCreateRefinementResultOutput
-instance Eq JsonCreateRefinementResultOutput
-instance FromJSON JsonCreateRefinementResultOutput
-instance ToJSON JsonCreateRefinementResultOutput

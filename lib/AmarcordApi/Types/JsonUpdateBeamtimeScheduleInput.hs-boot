@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonUpdateBeamtimeScheduleInput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonUpdateBeamtimeScheduleInput
-instance Show JsonUpdateBeamtimeScheduleInput
-instance Eq JsonUpdateBeamtimeScheduleInput
-instance FromJSON JsonUpdateBeamtimeScheduleInput
-instance ToJSON JsonUpdateBeamtimeScheduleInput

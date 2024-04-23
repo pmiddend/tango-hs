@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonIndexingJobUpdateOutput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonIndexingJobUpdateOutput
-instance Show JsonIndexingJobUpdateOutput
-instance Eq JsonIndexingJobUpdateOutput
-instance FromJSON JsonIndexingJobUpdateOutput
-instance ToJSON JsonIndexingJobUpdateOutput

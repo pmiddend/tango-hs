@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonCheckStandardUnitInput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonCheckStandardUnitInput
-instance Show JsonCheckStandardUnitInput
-instance Eq JsonCheckStandardUnitInput
-instance FromJSON JsonCheckStandardUnitInput
-instance ToJSON JsonCheckStandardUnitInput

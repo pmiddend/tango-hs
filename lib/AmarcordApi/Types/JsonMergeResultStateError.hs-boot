@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonMergeResultStateError where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonMergeResultStateError
-instance Show JsonMergeResultStateError
-instance Eq JsonMergeResultStateError
-instance FromJSON JsonMergeResultStateError
-instance ToJSON JsonMergeResultStateError

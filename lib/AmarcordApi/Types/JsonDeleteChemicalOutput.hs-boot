@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonDeleteChemicalOutput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonDeleteChemicalOutput
-instance Show JsonDeleteChemicalOutput
-instance Eq JsonDeleteChemicalOutput
-instance FromJSON JsonDeleteChemicalOutput
-instance ToJSON JsonDeleteChemicalOutput

@@ -1,9 +1,0 @@
-module AmarcordApi.Types.JsonCreateAttributiFromSchemaInput where
-import Data.Aeson
-import qualified Data.Aeson as Data.Aeson.Types.Internal
-import qualified AmarcordApi.Common
-data JsonCreateAttributiFromSchemaInput
-instance Show JsonCreateAttributiFromSchemaInput
-instance Eq JsonCreateAttributiFromSchemaInput
-instance FromJSON JsonCreateAttributiFromSchemaInput
-instance ToJSON JsonCreateAttributiFromSchemaInput
