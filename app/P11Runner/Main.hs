@@ -37,7 +37,19 @@ import Foreign.Marshal.Alloc (free, malloc)
 import Foreign.Marshal.Utils (new)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
 import Foreign.Storable (peek, poke)
-import P11Runner.DetectorTowerState (DetectorTowerConfig (..), DetectorTowerState, detectorTowerInMeasurementDistance, detectorTowerInSafeDistance, detectorTowerIsMoving, detectorTowerMoveToMeasurement, detectorTowerMoveToSafe, detectorTowerUpdate)
+import P11Runner.DetectorTowerState
+  ( DetectorTowerConfig (..),
+    DetectorTowerState,
+    detectorTowerInMeasurementDistance,
+    detectorTowerInSafeDistance,
+    detectorTowerInit,
+    detectorTowerIsMoving,
+    detectorTowerMeasurementDistance,
+    detectorTowerMoveToMeasurement,
+    detectorTowerMoveToSafe,
+    detectorTowerUpdate,
+    updateDetectorTowerMeasurementDistance,
+  )
 import P11Runner.Markdown (Markdown, markdownBold, markdownEmph, markdownPlain)
 import P11Runner.Util (numberIsClose, numberIsCloseAbs)
 import System.Environment (getArgs, getProgName)
@@ -73,7 +85,7 @@ import TangoHL
     ServerStatus (ServerStatus),
     TangoServerAttribute (TangoServerAttribute, tangoServerAttributeAccessor, tangoServerAttributeName),
     TangoServerAttributeAccessor (TangoServerAttributeAccessor),
-    TangoServerAttributeTypes (TangoServerAttributeTypeString),
+    TangoServerAttributeTypes (TangoServerAttributeTypeDouble, TangoServerAttributeTypeString),
     TangoServerCommand (ServerCommandVoidVoid),
     TangoUrl,
     TypedProperty (TypedProperty),
@@ -216,7 +228,6 @@ instance ToJSON Message where
 
 data DeviceData = DeviceData
   { proxies :: Proxies,
-    detectorTowerConfig :: DetectorTowerConfig,
     desiredCollimatorStatus :: DesiredCollimatorStatus,
     currentRunnerState :: RunnerState,
     currentDetectorTowerState :: DetectorTowerState,
@@ -407,6 +418,10 @@ fastShutterIsOpen = do
   currentData <- readDeviceData
   liftIO $ readFastShutterOpen currentData.proxies.fastShutter
 
+updateDetectorTowerState :: DetectorTowerState -> P11RunnerMonad ()
+updateDetectorTowerState newState = do
+  updateDeviceData (\dd -> dd {currentDetectorTowerState = newState})
+
 commandPrepareForMeasurement :: P11RunnerMonad ()
 commandPrepareForMeasurement = do
   currentData <- readDeviceData
@@ -444,8 +459,9 @@ commandPrepareForMeasurement = do
           pure (Just (addUTCTime currentData.colliConfig.movementTimeoutS now))
         BothCollisInDesired -> pure Nothing
 
-      (newState, log) <- detectorTowerMoveToMeasurement currentData.proxies.detectorTower currentData.detectorTowerConfig
-      appendMsg LogLevelInfo log
+      (newState, log') <- detectorTowerMoveToMeasurement currentData.currentDetectorTowerState
+      updateDetectorTowerState newState
+      appendMsg LogLevelInfo log'
 
       shieldIsDown' <- shieldIsDown
 
@@ -508,8 +524,9 @@ commandPrepareToOpenHutch = do
           pure (Just (addUTCTime currentData.colliConfig.movementTimeoutS now))
         BothCollisInDesired -> pure Nothing
 
-      (newState, log) <- detectorTowerMoveToSafe currentData.proxies.detectorTower currentData.detectorTowerConfig
-      appendMsg LogLevelInfo log
+      (newState, log') <- detectorTowerMoveToSafe currentData.currentDetectorTowerState
+      updateDetectorTowerState newState
+      appendMsg LogLevelInfo log'
 
       updateRunnerState (RunnerStatePreparingToOpenHutch (PreparingToOpenHutchData collimatorEndTime))
 
@@ -619,7 +636,6 @@ calculateState
                     useChopper,
                     exposureTimeMs,
                     numberOfImages,
-                    detectorTowerConfig,
                     currentDetectorTowerState,
                     desiredCollimatorStatus,
                     colliConfig
@@ -819,15 +835,15 @@ initCallback deviceData instance' = do
                   DetectorTowerConfig
                     { towerConfigSafeDistanceMm = propTowerSafeDistanceMm,
                       towerConfigMeasurementDistanceMm = 200.0,
-                      towerConfigToleranceMm = propTowerDistanceToleranceMm
+                      towerConfigToleranceMm = propTowerDistanceToleranceMm,
+                      towerConfigProxy = proxies.detectorTower
                     }
-            towerState <- detectorTowerUpdate proxies.detectorTower detectorTowerConfig
+            towerState <- detectorTowerInit detectorTowerConfig
             let deviceDataContent =
                   DeviceData
                     { proxies = proxies,
                       desiredCollimatorStatus = DesiredIn,
                       currentRunnerState = RunnerStateUnknownMoving "before first connect call",
-                      detectorTowerConfig = detectorTowerConfig,
                       currentDetectorTowerState = towerState,
                       useChopper = False,
                       exposureTimeMs = 7.6,
@@ -838,8 +854,19 @@ initCallback deviceData instance' = do
             putMVar deviceData deviceDataContent
             putStrLn "initializing successful"
 
-readTestAttribute :: DeviceInstancePtr -> IO Text
-readTestAttribute _ = pure "lol"
+readDetectorTowerMeasurementDistance :: P11RunnerMonad Double
+readDetectorTowerMeasurementDistance = do
+  currentData <- readDeviceData
+  pure (detectorTowerMeasurementDistance currentData.currentDetectorTowerState)
+
+writeDetectorTowerMeasurementDistance :: Double -> P11RunnerMonad ()
+writeDetectorTowerMeasurementDistance newDistance =
+  updateDeviceData
+    ( \dd ->
+        dd
+          { currentDetectorTowerState = updateDetectorTowerMeasurementDistance dd.currentDetectorTowerState newDistance
+          }
+    )
 
 main :: IO ()
 main = do
@@ -850,8 +877,31 @@ main = do
       (ServerStatus "")
       Unknown
       [ TangoServerAttribute
-          { tangoServerAttributeName = AttributeName "test_attribute",
-            tangoServerAttributeAccessor = TangoServerAttributeTypeString (TangoServerAttributeAccessor readTestAttribute Nothing)
+          { tangoServerAttributeName = AttributeName "detector_tower_measurement_distance",
+            tangoServerAttributeAccessor =
+              TangoServerAttributeTypeDouble
+                ( TangoServerAttributeAccessor
+                    ( \instancePtr ->
+                        evalStateT
+                          readDetectorTowerMeasurementDistance
+                          ( P11RunnerState
+                              { runnerVar = deviceData,
+                                runnerInstance = instancePtr
+                              }
+                          )
+                    )
+                    ( Just
+                        ( \instancePtr newDistance ->
+                            evalStateT
+                              (writeDetectorTowerMeasurementDistance newDistance)
+                              ( P11RunnerState
+                                  { runnerVar = deviceData,
+                                    runnerInstance = instancePtr
+                                  }
+                              )
+                        )
+                    )
+                )
           }
       ]
       [ ServerCommandVoidVoid

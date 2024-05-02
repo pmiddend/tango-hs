@@ -3,6 +3,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module TangoHL
   ( withDeviceProxy,
@@ -24,7 +25,7 @@ module TangoHL
     DeviceProxyPtr,
     PropertyName (PropertyName),
     TangoServerAttribute (TangoServerAttribute, tangoServerAttributeName, tangoServerAttributeAccessor),
-    TangoServerAttributeTypes (TangoServerAttributeTypeString),
+    TangoServerAttributeTypes (TangoServerAttributeTypeString, TangoServerAttributeTypeDouble),
     TangoServerAttributeAccessor (TangoServerAttributeAccessor),
     CommandName (CommandName),
     AttributeName (AttributeName),
@@ -120,7 +121,7 @@ import Tango.Server
 import Text.Show (Show, show)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
-import UnliftIO.Foreign (FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
+import UnliftIO.Foreign (CDouble, FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
 import Prelude (Double, Enum (fromEnum), Float, error, fromIntegral, realToFrac)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
@@ -350,7 +351,9 @@ writeTypeFromAccessor :: TangoServerAttributeAccessor a -> HaskellAttrWriteType
 writeTypeFromAccessor (TangoServerAttributeAccessor _ Nothing) = Read
 writeTypeFromAccessor _ = ReadWrite
 
-newtype TangoServerAttributeTypes = TangoServerAttributeTypeString (TangoServerAttributeAccessor Text)
+data TangoServerAttributeTypes
+  = TangoServerAttributeTypeString (TangoServerAttributeAccessor Text)
+  | TangoServerAttributeTypeDouble (TangoServerAttributeAccessor Double)
 
 data TangoServerAttribute = TangoServerAttribute
   { tangoServerAttributeName :: AttributeName,
@@ -384,8 +387,10 @@ tangoServerInit propertyNames (ServerStatus initialStatus) initialState attribut
       wrapCommand (ServerCommandVoidVoid _name f) = voidWrapped f
       extractAttributeDataType :: TangoServerAttribute -> HaskellTangoDataType
       extractAttributeDataType (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString _}) = HaskellDevString
+      extractAttributeDataType (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeDouble _}) = HaskellDevDouble
       extractWriteType :: TangoServerAttribute -> HaskellAttrWriteType
       extractWriteType (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString accessor}) = writeTypeFromAccessor accessor
+      extractWriteType (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeDouble accessor}) = writeTypeFromAccessor accessor
       withConvertedCommand :: TangoServerCommand -> (Ptr HaskellCommandDefinition -> m ()) -> m ()
       withConvertedCommand tsc f = do
         wrappedCommandCallback <- liftIO (createCommandCallback (wrapCommand tsc))
@@ -404,11 +409,22 @@ tangoServerInit propertyNames (ServerStatus initialStatus) initialState attribut
           textValue <- getter devicePtr
           cstringValue <- newCString (unpack textValue)
           poke (castPtr writePtr) cstringValue
+      extractGetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeDouble (TangoServerAttributeAccessor getter _)}) =
+        createGetterWrapper \devicePtr writePtr -> do
+          doubleValue <- getter devicePtr
+          let cdoubleValue = realToFrac @Double @CDouble doubleValue
+          poke (castPtr writePtr) cdoubleValue
       extractSetCallback :: TangoServerAttribute -> IO (FunPtr HaskellAttributeSetter)
       extractSetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString (TangoServerAttributeAccessor _ (Just setter))}) =
         createSetterWrapper \devicePtr readPtr -> do
           readCstring <- peekCString (castPtr readPtr)
           setter devicePtr (pack readCstring)
+      extractSetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeDouble (TangoServerAttributeAccessor _ (Just setter))}) =
+        createSetterWrapper \devicePtr readPtr -> do
+          cdoubleValue <- peek (castPtr readPtr)
+          setter devicePtr (realToFrac @CDouble @Double cdoubleValue)
+      extractSetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeDouble (TangoServerAttributeAccessor _ Nothing)}) =
+        createSetterWrapper \_devicePtr _readPtr -> pure ()
       extractSetCallback (TangoServerAttribute {tangoServerAttributeAccessor = TangoServerAttributeTypeString (TangoServerAttributeAccessor _ Nothing)}) =
         createSetterWrapper \_devicePtr _readPtr -> pure ()
       withConvertedAttribute :: TangoServerAttribute -> (Ptr HaskellAttributeDefinition -> m ()) -> m ()
