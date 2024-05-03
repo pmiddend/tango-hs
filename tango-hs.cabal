@@ -51,6 +51,7 @@ executable P11RunnerHs
     other-modules:     P11Runner.DetectorTowerState
                      , P11Runner.Util
                      , P11Runner.Markdown
+                     , P11Runner.CollimatorState
     build-depends:     base
                      , text
                      , derive-storable

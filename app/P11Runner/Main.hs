@@ -1,12 +1,10 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Main where
 
@@ -37,6 +35,7 @@ import Foreign.Marshal.Alloc (free, malloc)
 import Foreign.Marshal.Utils (new)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
 import Foreign.Storable (peek, poke)
+import P11Runner.CollimatorState (ColliAxisValues (ColliAxisValues), ColliState, colliInit, colliMoveOut, colliMoveToDesired, isColliInDesired, isColliMoving)
 import P11Runner.DetectorTowerState
   ( DetectorTowerConfig (..),
     DetectorTowerState,
@@ -123,50 +122,6 @@ data ChopperState
   | ChopperStateDisabled
   deriving (Show)
 
-data ColliConfig = ColliConfig
-  { inY :: Double,
-    inZ :: Double,
-    outY :: Double,
-    outZ :: Double,
-    toleranceY :: Double,
-    toleranceZ :: Double,
-    movementTimeoutS :: NominalDiffTime
-  }
-
-data ColliConfigJson = ColliConfigJson
-  { inY :: Double,
-    inZ :: Double,
-    outY :: Double,
-    outZ :: Double
-  }
-
-instance FromJSON ColliConfigJson where
-  parseJSON = withObject "ColliConfigJson" \v ->
-    ColliConfigJson
-      <$> v .: "in_y"
-      <*> v .: "in_z"
-      <*> v .: "out_y"
-      <*> v .: "out_z"
-
-readColliConfig :: (MonadIO m) => FilePath -> m (Either Text ColliConfigJson)
-readColliConfig fp =
-  liftIO $
-    eitherDecodeFileStrict' fp >>= \case
-      Left e -> pure $ Left (pack e)
-      Right v -> pure (Right v)
-
-colliConfigFromJson :: ColliConfigJson -> Double -> Double -> Double -> ColliConfig
-colliConfigFromJson (ColliConfigJson {inY, inZ, outY, outZ}) movementTimeoutS toleranceY toleranceZ =
-  ColliConfig
-    { inY = inY,
-      inZ = inZ,
-      outY = outY,
-      outZ = outZ,
-      toleranceY = toleranceY,
-      toleranceZ = toleranceZ,
-      movementTimeoutS = secondsToNominalDiffTime (fromIntegral @Int @Pico $ round movementTimeoutS)
-    }
-
 data MeasuringState = MeasuringState
   { startTime :: !UTCTime,
     diodeTargetValueCount :: !Int,
@@ -177,24 +132,14 @@ data MeasuringState = MeasuringState
   }
   deriving (Show)
 
-newtype PreparingForMeasurementData = PreparingForMeasurementData
-  { collimatorEndTime :: Maybe UTCTime
-  }
-  deriving (Show)
-
-newtype PreparingToOpenHutchData = PreparingToOpenHutchData
-  { collimatorEndTime :: Maybe UTCTime
-  }
-  deriving (Show)
-
 data RunnerState
   = RunnerStateUnknownMoving !Text
   | RunnerStateUnknownStatic !Text
   | RunnerStateStoppingChopper !ChopperState
   | RunnerStateMeasuring !MeasuringState
-  | RunnerStatePreparingForMeasurement !PreparingForMeasurementData
+  | RunnerStatePreparingForMeasurement
   | RunnerStateReadyToMeasure
-  | RunnerStatePreparingToOpenHutch !PreparingToOpenHutchData
+  | RunnerStatePreparingToOpenHutch
   | RunnerStateReadyToOpenHutch
   deriving (Show)
 
@@ -228,10 +173,10 @@ instance ToJSON Message where
 
 data DeviceData = DeviceData
   { proxies :: Proxies,
-    desiredCollimatorStatus :: DesiredCollimatorStatus,
     currentRunnerState :: RunnerState,
+    currentColliState :: ColliState,
     currentDetectorTowerState :: DetectorTowerState,
-    colliConfig :: ColliConfig,
+    colliState :: ColliState,
     useChopper :: Bool,
     exposureTimeMs :: Double,
     numberOfImages :: Int,
@@ -255,9 +200,9 @@ runnerStateToTangoState (RunnerStateUnknownMoving _) = Moving
 runnerStateToTangoState (RunnerStateUnknownStatic _) = On
 runnerStateToTangoState (RunnerStateStoppingChopper _) = Moving
 runnerStateToTangoState (RunnerStateMeasuring _) = Moving
-runnerStateToTangoState (RunnerStatePreparingForMeasurement _) = Moving
+runnerStateToTangoState RunnerStatePreparingForMeasurement = Moving
 runnerStateToTangoState RunnerStateReadyToMeasure = On
-runnerStateToTangoState (RunnerStatePreparingToOpenHutch _) = Moving
+runnerStateToTangoState RunnerStatePreparingToOpenHutch = Moving
 runnerStateToTangoState RunnerStateReadyToOpenHutch = On
 
 updateRunnerState :: RunnerState -> P11RunnerMonad ()
@@ -279,41 +224,36 @@ readVar = gets runnerVar
 logToConsole :: Text -> P11RunnerMonad ()
 logToConsole = liftIO . putStrLn
 
-updatePreparingForMeasurement :: PreparingForMeasurementData -> RunnerState -> P11RunnerMonad ()
-updatePreparingForMeasurement (PreparingForMeasurementData {collimatorEndTime}) calculatedState = do
-  now <- liftIO getCurrentTime
-  if maybe False (now <) collimatorEndTime
-    then logToConsole "collimator timeout not expired yet, waiting"
-    else case calculatedState of
-      RunnerStateReadyToMeasure -> do
-        appendMsg LogLevelInfo "colli timeout expired, ready to measure"
-        updateRunnerState RunnerStateReadyToMeasure
-      RunnerStateUnknownMoving reason -> do
-        logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
-      RunnerStateUnknownStatic reason -> do
-        logToConsole $
-          "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
-      otherState -> do
-        logToConsole "timeout for preparing to for measurement expired, but we determined a weird state state, switching to that state"
-        updateRunnerState otherState
+updatePreparingForMeasurement :: RunnerState -> P11RunnerMonad ()
+updatePreparingForMeasurement calculatedState = do
+  case calculatedState of
+    RunnerStateReadyToMeasure -> do
+      appendMsg LogLevelInfo "colli timeout expired, ready to measure"
+      updateRunnerState RunnerStateReadyToMeasure
+    RunnerStateUnknownMoving reason -> do
+      logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
+    RunnerStateUnknownStatic reason -> do
+      logToConsole $
+        "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
+    otherState -> do
+      logToConsole "timeout for preparing to for measurement expired, but we determined a weird state state, switching to that state"
+      updateRunnerState otherState
 
-updatePreparingToOpenHutch :: PreparingToOpenHutchData -> RunnerState -> P11RunnerMonad ()
-updatePreparingToOpenHutch (PreparingToOpenHutchData {collimatorEndTime}) calculatedState = do
+updatePreparingToOpenHutch :: RunnerState -> P11RunnerMonad ()
+updatePreparingToOpenHutch calculatedState = do
   now <- liftIO getCurrentTime
-  if maybe False (now <) collimatorEndTime
-    then logToConsole "collimator timeout not expired yet, waiting"
-    else case calculatedState of
-      RunnerStateReadyToOpenHutch -> do
-        appendMsg LogLevelInfo "colli timeout expired, ready to open hutch"
-        updateRunnerState RunnerStateReadyToOpenHutch
-      RunnerStateUnknownMoving reason -> do
-        logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
-      RunnerStateUnknownStatic reason -> do
-        logToConsole $
-          "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
-      otherState -> do
-        logToConsole "timeout for preparing to for measurement expired, but we determined a weird state state, switching to that state"
-        updateRunnerState otherState
+  case calculatedState of
+    RunnerStateReadyToOpenHutch -> do
+      appendMsg LogLevelInfo "colli timeout expired, ready to open hutch"
+      updateRunnerState RunnerStateReadyToOpenHutch
+    RunnerStateUnknownMoving reason -> do
+      logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
+    RunnerStateUnknownStatic reason -> do
+      logToConsole $
+        "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
+    otherState -> do
+      logToConsole "timeout for preparing to for measurement expired, but we determined a weird state state, switching to that state"
+      updateRunnerState otherState
 
 commandUpdate :: P11RunnerMonad ()
 commandUpdate = do
@@ -322,10 +262,10 @@ commandUpdate = do
   liftIO $ putStrLn $ "calculated state: " <> pack (show newState)
   liftIO $ putStrLn $ "current state: " <> pack (show currentData.currentRunnerState)
   case currentData.currentRunnerState of
-    RunnerStatePreparingForMeasurement pfmData ->
-      updatePreparingForMeasurement pfmData newState
-    RunnerStatePreparingToOpenHutch pfmData ->
-      updatePreparingToOpenHutch pfmData newState
+    RunnerStatePreparingForMeasurement ->
+      updatePreparingForMeasurement newState
+    RunnerStatePreparingToOpenHutch ->
+      updatePreparingToOpenHutch newState
     RunnerStateReadyToMeasure -> do
       runnerVar' <- gets runnerVar
       runnerState <- liftIO $ readMVar runnerVar'
@@ -388,20 +328,6 @@ abortAcquisition = do
   liftIO $ commandInOutVoid currentData.proxies.eigerDetector "Abort"
   liftIO $ commandInOutVoid currentData.proxies.eigerDetector "Disarm"
 
-moveColliTo :: DesiredCollimatorStatus -> P11RunnerMonad ()
-moveColliTo desired = do
-  currentData <- readDeviceData
-  let positionY = if desired == DesiredIn then currentData.colliConfig.inY else currentData.colliConfig.outY
-      positionZ = if desired == DesiredIn then currentData.colliConfig.inZ else currentData.colliConfig.outZ
-  appendMsg LogLevelInfo ("moving " <> markdownBold "collimator" <> ", this might take a while")
-  liftIO $ writeDoubleAttribute currentData.proxies.collimatorY "Position" positionY
-  liftIO $ writeDoubleAttribute currentData.proxies.collimatorZ "Position" positionZ
-
-moveColliToDesired :: P11RunnerMonad ()
-moveColliToDesired = do
-  currentData <- readDeviceData
-  moveColliTo currentData.desiredCollimatorStatus
-
 raiseShield :: P11RunnerMonad ()
 raiseShield = do
   currentData <- readDeviceData
@@ -422,11 +348,15 @@ updateDetectorTowerState :: DetectorTowerState -> P11RunnerMonad ()
 updateDetectorTowerState newState = do
   updateDeviceData (\dd -> dd {currentDetectorTowerState = newState})
 
+updateColliState :: ColliState -> P11RunnerMonad ()
+updateColliState newState = do
+  updateDeviceData (\dd -> dd {currentColliState = newState})
+
 commandPrepareForMeasurement :: P11RunnerMonad ()
 commandPrepareForMeasurement = do
   currentData <- readDeviceData
   case currentData.currentRunnerState of
-    RunnerStatePreparingForMeasurement _ ->
+    RunnerStatePreparingForMeasurement ->
       appendMsg LogLevelDebug (markdownPlain "already preparing for measurement, doing nothing")
     RunnerStateReadyToMeasure ->
       appendMsg LogLevelDebug (markdownPlain "already prepared for measurement, doing nothing")
@@ -442,25 +372,12 @@ commandPrepareForMeasurement = do
             LogLevelInfo
             (markdownBold "stream" <> " not " <> markdownEmph "busy" <> " but " <> packShow other <> ", not aborting")
 
-      colliStatus <-
-        checkCollimator
-          currentData.proxies.collimatorY
-          currentData.proxies.collimatorZ
-          currentData.colliConfig
-          currentData.desiredCollimatorStatus
+      (newColliState, colliLog) <- colliMoveToDesired currentData.colliState
+      updateColliState newColliState
+      appendMsg LogLevelInfo colliLog
 
-      collimatorEndTime <- case colliStatus of
-        AtLeastOneColliNotDesired _whichColliAxisIsNotDesired -> do
-          appendMsg
-            LogLevelInfo
-            ("moving " <> markdownBold "collimator" <> " to position " <> packShow currentData.desiredCollimatorStatus)
-          moveColliToDesired
-          now <- liftIO getCurrentTime
-          pure (Just (addUTCTime currentData.colliConfig.movementTimeoutS now))
-        BothCollisInDesired -> pure Nothing
-
-      (newState, log') <- detectorTowerMoveToMeasurement currentData.currentDetectorTowerState
-      updateDetectorTowerState newState
+      (newTowerState, log') <- detectorTowerMoveToMeasurement currentData.currentDetectorTowerState
+      updateDetectorTowerState newTowerState
       appendMsg LogLevelInfo log'
 
       shieldIsDown' <- shieldIsDown
@@ -475,13 +392,13 @@ commandPrepareForMeasurement = do
         then closeFastShutter
         else appendMsg LogLevelDebug (markdownBold "fast shutter" <> markdownPlain " already closed")
 
-      updateRunnerState (RunnerStatePreparingForMeasurement (PreparingForMeasurementData collimatorEndTime))
+      updateRunnerState RunnerStatePreparingForMeasurement
 
 commandPrepareToOpenHutch :: P11RunnerMonad ()
 commandPrepareToOpenHutch = do
   currentData <- readDeviceData
   case currentData.currentRunnerState of
-    RunnerStatePreparingToOpenHutch _ ->
+    RunnerStatePreparingToOpenHutch ->
       appendMsg LogLevelDebug (markdownPlain "already ready to open hutch, doing nothing")
     RunnerStateReadyToOpenHutch ->
       appendMsg LogLevelDebug (markdownPlain "already prepared for measurement, doing nothing")
@@ -509,26 +426,15 @@ commandPrepareToOpenHutch = do
             LogLevelInfo
             (markdownBold "stream" <> " not " <> markdownEmph "busy" <> " but " <> packShow other <> ", not aborting")
 
-      colliStatus <-
-        checkCollimator
-          currentData.proxies.collimatorY
-          currentData.proxies.collimatorZ
-          currentData.colliConfig
-          DesiredOut
-
-      collimatorEndTime <- case colliStatus of
-        AtLeastOneColliNotDesired _whichColliAxisIsNotDesired -> do
-          appendMsg LogLevelInfo ("moving " <> markdownBold "collimator" <> " out")
-          moveColliTo DesiredOut
-          now <- liftIO getCurrentTime
-          pure (Just (addUTCTime currentData.colliConfig.movementTimeoutS now))
-        BothCollisInDesired -> pure Nothing
+      (newColliState, colliLog) <- colliMoveOut currentData.colliState
+      updateColliState newColliState
+      appendMsg LogLevelInfo colliLog
 
       (newState, log') <- detectorTowerMoveToSafe currentData.currentDetectorTowerState
       updateDetectorTowerState newState
       appendMsg LogLevelInfo log'
 
-      updateRunnerState (RunnerStatePreparingToOpenHutch (PreparingToOpenHutchData collimatorEndTime))
+      updateRunnerState RunnerStatePreparingToOpenHutch
 
 flippedEvalState :: (Monad m) => s -> StateT s m a -> m a
 flippedEvalState m initial = evalStateT initial m
@@ -550,28 +456,6 @@ checkColliMotor proxy inPos outPos tolerance desiredColliStatus = do
 type ColliAxisDescription = Text
 
 data CollimatorResult = BothCollisInDesired | AtLeastOneColliNotDesired (NE.NonEmpty ColliAxisDescription)
-
-checkCollimator ::
-  forall m.
-  (MonadIO m) =>
-  DeviceProxyPtr ->
-  DeviceProxyPtr ->
-  ColliConfig ->
-  DesiredCollimatorStatus ->
-  m CollimatorResult
-checkCollimator collimatorY collimatorZ colliConfig desiredColliStatus = do
-  yInDesired <- checkColliMotor collimatorY colliConfig.inY colliConfig.outY colliConfig.toleranceY desiredColliStatus
-  zInDesired <- checkColliMotor collimatorZ colliConfig.inZ colliConfig.outZ colliConfig.toleranceZ desiredColliStatus
-
-  if yInDesired
-    then
-      if zInDesired
-        then pure BothCollisInDesired
-        else pure (AtLeastOneColliNotDesired (NE.singleton "z"))
-    else
-      if zInDesired
-        then pure (AtLeastOneColliNotDesired (NE.singleton "y"))
-        else pure (AtLeastOneColliNotDesired ("z" NE.:| ["y"]))
 
 checkChopper :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Bool -> m (Maybe Text)
 checkChopper chopper useChopper = do
@@ -632,23 +516,20 @@ packShow = pack . show
 calculateState :: DeviceData -> IO RunnerState
 calculateState
   currentData@( DeviceData
-                  { proxies = Proxies {detectorTower, chopper, eigerStream, fastShutter, eigerDetector, collimatorY, collimatorZ},
+                  { proxies = Proxies {detectorTower, chopper, eigerStream, fastShutter, eigerDetector},
                     useChopper,
                     exposureTimeMs,
                     numberOfImages,
                     currentDetectorTowerState,
-                    desiredCollimatorStatus,
-                    colliConfig
+                    colliState
                   }
                 ) = do
     chopperState <- readStateAttribute chopper
     shieldIsDown' <- readBoolAttribute detectorTower "ShieldIsDown"
     shieldIsUp <- readBoolAttribute detectorTower "ShieldIsUp"
-    collimatorYState <- readStateAttribute collimatorY
-    collimatorZState <- readStateAttribute collimatorZ
+    colliMoving <- isColliMoving colliState
     if detectorTowerIsMoving currentDetectorTowerState
-      || collimatorYState == Moving
-      || collimatorZState == Moving
+      || colliMoving
       || chopperState /= On
       || shieldIsUp == shieldIsDown'
       then
@@ -656,10 +537,8 @@ calculateState
           RunnerStateUnknownMoving $
             "tower state (has to be On)) is "
               <> packShow currentDetectorTowerState
-              <> ", collimator y/z movement states (have to be non-moving) are "
-              <> packShow collimatorYState
-              <> "/"
-              <> packShow collimatorZState
+              <> ", collimator movement state (have to be non-moving) is "
+              <> (if colliMoving then "moving" else "non-moving")
               <> ", chopper state (has to be On) is "
               <> packShow chopperState
               <> " and shield down/up booleans are "
@@ -671,11 +550,10 @@ calculateState
         if detectorTowerInMeasurementDistance currentDetectorTowerState
           then do
             addMessage "detector tower is in measuring distance"
-            colliResult <- checkCollimator collimatorY collimatorZ colliConfig desiredCollimatorStatus
-            case colliResult of
-              AtLeastOneColliNotDesired (colli NE.:| []) -> finishUnknownStatic (", but the colli " <> colli <> " is not in desired position")
-              AtLeastOneColliNotDesired _ -> finishUnknownStatic ", but both collimator axes are not in the desired position"
-              BothCollisInDesired -> do
+            colliInDesired <- isColliInDesired colliState
+            if not colliInDesired
+              then finishUnknownStatic ", but the colli is not in desired position"
+              else do
                 addMessage "collimator is in desired position"
                 if shieldIsUp
                   then do
@@ -827,10 +705,15 @@ initCallback deviceData instance' = do
             <*> newDeviceProxy propEigerStreamIdentifier
             <*> newDeviceProxy propFastShutterIdentifier
             <*> newDeviceProxy propDetectorIdentifier
-        colliConfig <- readColliConfig propColliConfigFile
-        case colliConfig of
+        colliState <-
+          colliInit
+            (pack propColliConfigFile)
+            propColliMovementTimeoutS
+            (ColliAxisValues propColliToleranceY propColliToleranceZ)
+            (ColliAxisValues proxies.collimatorY proxies.collimatorZ)
+        case colliState of
           Left e -> error $ "invalid colli config file \"" <> propColliConfigFile <> "\": " <> unpack e
-          Right colliConfig' -> do
+          Right colliState' -> do
             let detectorTowerConfig =
                   DetectorTowerConfig
                     { towerConfigSafeDistanceMm = propTowerSafeDistanceMm,
@@ -842,13 +725,12 @@ initCallback deviceData instance' = do
             let deviceDataContent =
                   DeviceData
                     { proxies = proxies,
-                      desiredCollimatorStatus = DesiredIn,
+                      colliState = colliState',
                       currentRunnerState = RunnerStateUnknownMoving "before first connect call",
                       currentDetectorTowerState = towerState,
                       useChopper = False,
                       exposureTimeMs = 7.6,
                       numberOfImages = 1000,
-                      colliConfig = colliConfigFromJson colliConfig' propColliMovementTimeoutS propColliToleranceY propColliToleranceZ,
                       msgTrace = mempty
                     }
             putMVar deviceData deviceDataContent
