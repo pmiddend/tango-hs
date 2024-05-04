@@ -40,15 +40,11 @@ import Foreign.Storable (peek, poke)
 import P11Runner.CollimatorState (ColliAxisValues (ColliAxisValues), ColliState, colliInit, colliMoveOut, colliMoveToDesired, isColliInDesired, isColliMoving, isColliOut)
 import P11Runner.DetectorTowerState
   ( DetectorTowerConfig (..),
-    DetectorTowerState,
-    detectorTowerInMeasurementDistance,
-    detectorTowerInSafeDistance,
-    detectorTowerInit,
-    detectorTowerIsMoving,
+    DetectorTowerState (..),
+    calculateDetectorTowerState,
     detectorTowerMeasurementDistance,
     detectorTowerMoveToMeasurement,
     detectorTowerMoveToSafe,
-    detectorTowerUpdate,
     updateDetectorTowerMeasurementDistance,
   )
 import P11Runner.Markdown (Markdown, markdownBold, markdownEmph, markdownPlain)
@@ -188,7 +184,7 @@ data DeviceData = DeviceData
   { proxies :: Proxies,
     currentRunnerState :: RunnerState,
     currentColliState :: ColliState,
-    currentDetectorTowerState :: DetectorTowerState,
+    currentDetectorTowerState :: DetectorTowerConfig,
     useChopper :: Bool,
     exposureTimeMs :: Double,
     numberOfImages :: Int,
@@ -353,10 +349,6 @@ fastShutterIsOpen = do
   currentData <- readDeviceData
   liftIO $ readFastShutterOpen currentData.proxies.fastShutter
 
-updateDetectorTowerState :: DetectorTowerState -> P11RunnerMonad ()
-updateDetectorTowerState newState = do
-  updateDeviceData (\dd -> dd {currentDetectorTowerState = newState})
-
 updateColliState :: ColliState -> P11RunnerMonad ()
 updateColliState newState = do
   updateDeviceData (\dd -> dd {currentColliState = newState})
@@ -386,8 +378,7 @@ commandPrepareForMeasurement = do
       updateColliState newColliState
       appendMsg LogLevelInfo colliLog
 
-      (newTowerState, log') <- detectorTowerMoveToMeasurement currentData.currentDetectorTowerState
-      updateDetectorTowerState newTowerState
+      log' <- detectorTowerMoveToMeasurement currentData.currentDetectorTowerState
       appendMsg LogLevelInfo log'
 
       shieldIsDown' <- shieldIsDown
@@ -441,8 +432,7 @@ commandPrepareToOpenHutch = do
       updateColliState newColliState
       appendMsg LogLevelInfo colliLog
 
-      (newState, log') <- detectorTowerMoveToSafe currentData.currentDetectorTowerState
-      updateDetectorTowerState newState
+      log' <- detectorTowerMoveToSafe currentData.currentDetectorTowerState
       appendMsg LogLevelInfo log'
 
       updateRunnerState RunnerStatePreparingToOpenHutch
@@ -526,26 +516,26 @@ packShow = pack . show
 
 calculateState :: DeviceData -> IO RunnerState
 calculateState
-  currentData@( DeviceData
-                  { proxies = Proxies {detectorTower, chopper, eigerStream, fastShutter, eigerDetector},
-                    useChopper,
-                    exposureTimeMs,
-                    numberOfImages,
-                    currentDetectorTowerState,
-                    currentColliState
-                  }
-                ) = do
+  ( DeviceData
+      { proxies = Proxies {detectorTower, chopper, eigerStream, fastShutter, eigerDetector},
+        useChopper,
+        exposureTimeMs,
+        numberOfImages,
+        currentDetectorTowerState,
+        currentColliState
+      }
+    ) = do
     chopperState <- readStateAttribute chopper
     shieldIsDown' <- readBoolAttribute detectorTower "ShieldIsDown"
     shieldIsUp <- readBoolAttribute detectorTower "ShieldIsUp"
     colliMoving <- isColliMoving currentColliState
-    latestTowerState <- detectorTowerUpdate currentDetectorTowerState
-    if detectorTowerIsMoving latestTowerState || colliMoving || chopperState /= On || shieldIsUp == shieldIsDown'
+    latestTowerState <- calculateDetectorTowerState currentDetectorTowerState
+    if latestTowerState == DetectorTowerMoving || colliMoving || chopperState /= On || shieldIsUp == shieldIsDown'
       then
         pure $
           RunnerStateUnknownMoving $
-            "tower state (has to be On)) is "
-              <> packShow currentDetectorTowerState
+            "tower state (has to be On) is "
+              <> packShow latestTowerState
               <> ", collimator movement state (have to be non-moving) is "
               <> (if colliMoving then "moving" else "non-moving")
               <> ", chopper state (has to be On) is "
@@ -556,7 +546,7 @@ calculateState
               <> packShow shieldIsUp
       else flippedEvalState ["nothing is moving"] do
         let addMessage message = modify (message :)
-        if detectorTowerInMeasurementDistance currentDetectorTowerState
+        if latestTowerState == DetectorTowerInMeasurement
           then do
             addMessage "detector tower is in measuring distance"
             colliInDesired <- isColliInDesired currentColliState
@@ -622,11 +612,11 @@ calculateState
                                           )
                                       )
           else
-            if not (detectorTowerInSafeDistance currentDetectorTowerState)
+            if latestTowerState /= DetectorTowerInSafe
               then
                 finishUnknownStatic
                   ( ", but the tower is neither in the safe distance nor in the measurement distance: "
-                      <> packShow currentDetectorTowerState
+                      <> packShow latestTowerState
                   )
               else do
                 addMessage "tower is in safe distance"
@@ -734,13 +724,12 @@ initCallback deviceData instance' = do
                       towerConfigToleranceMm = propTowerDistanceToleranceMm,
                       towerConfigProxy = proxies.detectorTower
                     }
-            towerState <- detectorTowerInit detectorTowerConfig
             let deviceDataContent =
                   DeviceData
                     { proxies = proxies,
                       currentColliState = colliState',
                       currentRunnerState = RunnerStateUnknownMoving "before first connect call",
-                      currentDetectorTowerState = towerState,
+                      currentDetectorTowerState = detectorTowerConfig,
                       useChopper = False,
                       exposureTimeMs = 7.6,
                       numberOfImages = 1000,
@@ -838,9 +827,11 @@ main = do
   case initedServerEither of
     Left e -> putStrLn ("error initializing: " <> e)
     Right initedServer -> do
-      let printExceptionStep :: HaskellDevFailed Text -> Text
-          printExceptionStep (HaskellDevFailed {devFailedDesc, devFailedReason, devFailedOrigin, devFailedSeverity}) = devFailedDesc <> ", " <> devFailedReason
-          printTangoException :: TangoException -> IO ()
-          printTangoException (TangoException steps) =
-            putStrLn $ intercalate "\n" $ printExceptionStep <$> steps
-      catch (tangoServerStart initedServer) printTangoException
+      tangoServerStart initedServer
+
+-- let printExceptionStep :: HaskellDevFailed Text -> Text
+--     printExceptionStep (HaskellDevFailed {devFailedDesc, devFailedReason, devFailedOrigin, devFailedSeverity}) = devFailedDesc <> ", " <> devFailedReason
+--     printTangoException :: TangoException -> IO ()
+--     printTangoException (TangoException steps) =
+--       putStrLn $ intercalate "\n" $ printExceptionStep <$> steps
+-- catch (tangoServerStart initedServer) printTangoException

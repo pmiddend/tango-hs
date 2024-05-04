@@ -21,99 +21,50 @@ data DetectorTowerConfig = DetectorTowerConfig
   deriving (Eq, Show)
 
 data DetectorTowerState
-  = DetectorTowerMoving DetectorTowerConfig
-  | DetectorTowerInSafe DetectorTowerConfig
-  | DetectorTowerInMeasurement DetectorTowerConfig
-  | DetectorTowerOtherPosition DetectorTowerConfig Double
+  = DetectorTowerMoving
+  | DetectorTowerInSafe
+  | DetectorTowerInMeasurement
+  | DetectorTowerOtherPosition Double
   deriving (Eq, Show)
 
-configFromState :: DetectorTowerState -> DetectorTowerConfig
-configFromState (DetectorTowerMoving c) = c
-configFromState (DetectorTowerInSafe c) = c
-configFromState (DetectorTowerInMeasurement c) = c
-configFromState (DetectorTowerOtherPosition c _) = c
-
-updateConfigInState :: (DetectorTowerConfig -> DetectorTowerConfig) -> DetectorTowerState -> DetectorTowerState
-updateConfigInState f (DetectorTowerMoving c) = DetectorTowerMoving (f c)
-updateConfigInState f (DetectorTowerInSafe c) = DetectorTowerInSafe (f c)
-updateConfigInState f (DetectorTowerInMeasurement c) = DetectorTowerInMeasurement (f c)
-updateConfigInState f (DetectorTowerOtherPosition c p) = DetectorTowerOtherPosition (f c) p
-
-detectorTowerIsMoving :: DetectorTowerState -> Bool
-detectorTowerIsMoving (DetectorTowerMoving _) = True
-detectorTowerIsMoving _ = False
-
-detectorTowerInSafeDistance :: DetectorTowerState -> Bool
-detectorTowerInSafeDistance (DetectorTowerInSafe _) = True
-detectorTowerInSafeDistance _ = False
-
-detectorTowerInMeasurementDistance :: DetectorTowerState -> Bool
-detectorTowerInMeasurementDistance (DetectorTowerInMeasurement _) = True
-detectorTowerInMeasurementDistance _ = False
-
-detectorTowerInit :: (MonadIO m) => DetectorTowerConfig -> m DetectorTowerState
-detectorTowerInit towerConfig = do
-  tangoState <- liftIO $ readStateAttribute towerConfig.towerConfigProxy
-  case tangoState of
-    On -> do
-      towerDistanceMm <- liftIO $ readDoubleAttribute towerConfig.towerConfigProxy "DetectorDistance"
-      if numberIsCloseAbs towerDistanceMm towerConfig.towerConfigMeasurementDistanceMm towerConfig.towerConfigToleranceMm
-        then pure (DetectorTowerInMeasurement towerConfig)
+calculateDetectorTowerState :: (MonadIO m) => DetectorTowerConfig -> m DetectorTowerState
+calculateDetectorTowerState config = do
+  tangoState <- liftIO $ readStateAttribute config.towerConfigProxy
+  if tangoState == Moving
+    then pure DetectorTowerMoving
+    else do
+      towerDistanceMm <- liftIO $ readDoubleAttribute config.towerConfigProxy "DetectorDistance"
+      if numberIsCloseAbs towerDistanceMm config.towerConfigMeasurementDistanceMm config.towerConfigToleranceMm
+        then pure DetectorTowerInMeasurement
         else
-          if numberIsCloseAbs towerDistanceMm towerConfig.towerConfigSafeDistanceMm towerConfig.towerConfigToleranceMm
-            then pure (DetectorTowerInSafe towerConfig)
-            else pure (DetectorTowerOtherPosition towerConfig towerDistanceMm)
-    _otherState -> pure (DetectorTowerMoving towerConfig)
+          if numberIsCloseAbs towerDistanceMm config.towerConfigSafeDistanceMm config.towerConfigToleranceMm
+            then pure DetectorTowerInSafe
+            else pure (DetectorTowerOtherPosition towerDistanceMm)
 
-detectorTowerUpdate :: (MonadIO m) => DetectorTowerState -> m DetectorTowerState
-detectorTowerUpdate currentState = do
-  let towerConfig = configFromState currentState
-  tangoState <- liftIO $ readStateAttribute towerConfig.towerConfigProxy
-  case tangoState of
-    On -> do
-      towerDistanceMm <- liftIO $ readDoubleAttribute towerConfig.towerConfigProxy "DetectorDistance"
-      if numberIsCloseAbs towerDistanceMm towerConfig.towerConfigMeasurementDistanceMm towerConfig.towerConfigToleranceMm
-        then pure (DetectorTowerInMeasurement towerConfig)
-        else
-          if numberIsCloseAbs towerDistanceMm towerConfig.towerConfigSafeDistanceMm towerConfig.towerConfigToleranceMm
-            then pure (DetectorTowerInSafe towerConfig)
-            else pure (DetectorTowerOtherPosition towerConfig towerDistanceMm)
-    _otherState -> pure (DetectorTowerMoving towerConfig)
-
-detectorTowerMoveTo :: (MonadIO m) => Double -> DetectorTowerState -> m DetectorTowerState
-detectorTowerMoveTo distance currentState = do
-  let config = configFromState currentState
+detectorTowerMoveTo :: (MonadIO m) => Double -> DetectorTowerConfig -> m ()
+detectorTowerMoveTo distance config = do
   liftIO $ writeDoubleAttribute config.towerConfigProxy "DetectorDistance" distance
-  pure (DetectorTowerMoving config)
 
-detectorTowerMoveToSafe :: (MonadIO m) => DetectorTowerState -> m (DetectorTowerState, Markdown)
-detectorTowerMoveToSafe currentState = do
-  let towerConfig = configFromState currentState
+detectorTowerMoveToSafe :: (MonadIO m) => DetectorTowerConfig -> m Markdown
+detectorTowerMoveToSafe towerConfig = do
   towerDistanceMm <- liftIO $ readDoubleAttribute towerConfig.towerConfigProxy "DetectorDistance"
   if numberIsCloseAbs towerDistanceMm towerConfig.towerConfigSafeDistanceMm towerConfig.towerConfigToleranceMm
-    then pure (DetectorTowerInSafe towerConfig, markdownBold "tower" <> " already in safe distance")
+    then pure $ markdownBold "tower" <> " already in safe distance"
     else do
-      newState <- detectorTowerMoveTo towerConfig.towerConfigSafeDistanceMm currentState
-      pure (newState, "moving " <> markdownBold "tower" <> " to safe distance")
+      newState <- detectorTowerMoveTo towerConfig.towerConfigSafeDistanceMm towerConfig
+      pure $ "moving " <> markdownBold "tower" <> " to safe distance"
 
-detectorTowerMoveToMeasurement ::
-  (MonadIO m) =>
-  DetectorTowerState ->
-  m
-    ( DetectorTowerState,
-      Markdown
-    )
-detectorTowerMoveToMeasurement currentState = do
-  let towerConfig = configFromState currentState
+detectorTowerMoveToMeasurement :: (MonadIO m) => DetectorTowerConfig -> m Markdown
+detectorTowerMoveToMeasurement towerConfig = do
   towerDistanceMm <- liftIO $ readDoubleAttribute towerConfig.towerConfigProxy "DetectorDistance"
   if numberIsCloseAbs towerDistanceMm towerConfig.towerConfigMeasurementDistanceMm towerConfig.towerConfigToleranceMm
-    then pure (DetectorTowerInMeasurement towerConfig, markdownBold "tower" <> " already in measurement distance")
+    then pure $ markdownBold "tower" <> " already in measurement distance"
     else do
-      newState <- detectorTowerMoveTo towerConfig.towerConfigMeasurementDistanceMm currentState
-      pure (newState, "moving " <> markdownBold "tower" <> " to measurement distance")
+      newState <- detectorTowerMoveTo towerConfig.towerConfigMeasurementDistanceMm towerConfig
+      pure $ "moving " <> markdownBold "tower" <> " to measurement distance"
 
-updateDetectorTowerMeasurementDistance :: DetectorTowerState -> Double -> DetectorTowerState
-updateDetectorTowerMeasurementDistance state newDistance = updateConfigInState (\config -> config {towerConfigMeasurementDistanceMm = newDistance}) state
+updateDetectorTowerMeasurementDistance :: DetectorTowerConfig -> Double -> DetectorTowerConfig
+updateDetectorTowerMeasurementDistance config newDistance = config {towerConfigMeasurementDistanceMm = newDistance}
 
-detectorTowerMeasurementDistance :: DetectorTowerState -> Double
-detectorTowerMeasurementDistance = (.towerConfigMeasurementDistanceMm) . configFromState
+detectorTowerMeasurementDistance :: DetectorTowerConfig -> Double
+detectorTowerMeasurementDistance config = config.towerConfigMeasurementDistanceMm
