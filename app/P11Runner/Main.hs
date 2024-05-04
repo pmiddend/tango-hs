@@ -84,7 +84,6 @@ import TangoHL
     TangoException (TangoException),
     TangoServerAttribute (TangoServerAttribute, tangoServerAttributeAccessor, tangoServerAttributeName),
     TangoServerAttributeAccessor (TangoServerAttributeAccessor),
-    TangoServerAttributeTypes (TangoServerAttributeTypeDouble, TangoServerAttributeTypeString),
     TangoServerCommand (ServerCommandVoidVoid),
     TangoUrl,
     TypedProperty (TypedProperty),
@@ -352,6 +351,18 @@ fastShutterIsOpen = do
 updateColliState :: ColliState -> P11RunnerMonad ()
 updateColliState newState = do
   updateDeviceData (\dd -> dd {currentColliState = newState})
+
+commandStartRun :: P11RunnerMonad ()
+commandStartRun = do
+  logToConsole "command: start run"
+  currentData <- readDeviceData
+  case currentData.currentRunnerState of
+    RunnerStateMeasuring _ -> do
+      appendMsg LogLevelInfo (markdownPlain "starting run")
+    RunnerStateReadyToMeasure -> do
+      appendMsg LogLevelDebug (markdownPlain "already preparing for measurement, doing nothing")
+    otherState -> do
+      appendMsg LogLevelInfo (markdownPlain "cannot start a run, current state is " <> markdownEmph (packShow otherState))
 
 commandPrepareForMeasurement :: P11RunnerMonad ()
 commandPrepareForMeasurement = do
@@ -755,6 +766,18 @@ writeDetectorTowerMeasurementDistance newDistance =
 main :: IO ()
 main = do
   deviceData <- newEmptyMVar
+  let wrapVoidCommand commandName commandFn =
+        ServerCommandVoidVoid
+          (CommandName commandName)
+          ( \instancePtr ->
+              evalStateT
+                commandFn
+                ( P11RunnerState
+                    { runnerVar = deviceData,
+                      runnerInstance = instancePtr
+                    }
+                )
+          )
   initedServerEither <-
     tangoServerInit
       (gatherTypedPropertyNames p11RunnerProperties)
@@ -763,64 +786,33 @@ main = do
       [ TangoServerAttribute
           { tangoServerAttributeName = AttributeName "detector_tower_measurement_distance",
             tangoServerAttributeAccessor =
-              TangoServerAttributeTypeDouble
-                ( TangoServerAttributeAccessor
-                    ( \instancePtr ->
+              TangoServerAttributeAccessor
+                ( \instancePtr ->
+                    evalStateT
+                      readDetectorTowerMeasurementDistance
+                      ( P11RunnerState
+                          { runnerVar = deviceData,
+                            runnerInstance = instancePtr
+                          }
+                      )
+                )
+                ( Just
+                    ( \instancePtr newDistance ->
                         evalStateT
-                          readDetectorTowerMeasurementDistance
+                          (writeDetectorTowerMeasurementDistance newDistance)
                           ( P11RunnerState
                               { runnerVar = deviceData,
                                 runnerInstance = instancePtr
                               }
                           )
                     )
-                    ( Just
-                        ( \instancePtr newDistance ->
-                            evalStateT
-                              (writeDetectorTowerMeasurementDistance newDistance)
-                              ( P11RunnerState
-                                  { runnerVar = deviceData,
-                                    runnerInstance = instancePtr
-                                  }
-                              )
-                        )
-                    )
                 )
           }
       ]
-      [ ServerCommandVoidVoid
-          (CommandName "update")
-          ( \instancePtr ->
-              evalStateT
-                commandUpdate
-                ( P11RunnerState
-                    { runnerVar = deviceData,
-                      runnerInstance = instancePtr
-                    }
-                )
-          ),
-        ServerCommandVoidVoid
-          (CommandName "prepare_for_measurement")
-          ( \instancePtr ->
-              evalStateT
-                commandPrepareForMeasurement
-                ( P11RunnerState
-                    { runnerVar = deviceData,
-                      runnerInstance = instancePtr
-                    }
-                )
-          ),
-        ServerCommandVoidVoid
-          (CommandName "prepare_to_open_hutch")
-          ( \instancePtr ->
-              evalStateT
-                commandPrepareToOpenHutch
-                ( P11RunnerState
-                    { runnerVar = deviceData,
-                      runnerInstance = instancePtr
-                    }
-                )
-          )
+      [ wrapVoidCommand "update" commandUpdate,
+        wrapVoidCommand "prepare_for_measurement" commandPrepareForMeasurement,
+        wrapVoidCommand "start_run" commandStartRun,
+        wrapVoidCommand "prepare_to_open_hutch" commandPrepareToOpenHutch
       ]
       (initCallback deviceData)
   putStrLn "starting server now"
