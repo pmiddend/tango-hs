@@ -13,6 +13,11 @@ module TangoHL
     writeDoubleAttribute,
     writeInstanceState,
     commandInOutVoid,
+    HaskellDevFailed (HaskellDevFailed),
+    devFailedDesc,
+    devFailedReason,
+    devFailedOrigin,
+    devFailedSeverity,
     newDeviceProxy,
     resolveTypedProperties,
     readLong64Attribute,
@@ -42,6 +47,7 @@ module TangoHL
     readTypedProperty,
     readTypedTextProperty,
     HaskellTangoDevState (..),
+    TangoException (TangoException),
   )
 where
 
@@ -79,7 +85,7 @@ import Tango.Common
     HaskellCommandData (..),
     HaskellDataFormat (..),
     HaskellDataQuality (..),
-    HaskellDevFailed (HaskellDevFailed),
+    HaskellDevFailed (HaskellDevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     HaskellErrorStack (errorStackLength, errorStackSequence),
     HaskellTangoAttributeData (HaskellAttributeDataBoolArray, HaskellAttributeDataDoubleArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataStateArray, HaskellAttributeDataStringArray, HaskellAttributeDataULong64Array, HaskellAttributeDataUShortArray),
     HaskellTangoCommandData (..),

@@ -19,14 +19,14 @@ import Data.Text (Text, pack, unpack)
 import Data.Time (NominalDiffTime, addUTCTime, getCurrentTime, secondsToNominalDiffTime)
 import Data.Time.Clock (UTCTime, diffUTCTime)
 import P11Runner.Markdown (Markdown, markdownBold)
-import P11Runner.Util (numberIsCloseAbs)
+import P11Runner.Util (logToConsole, numberIsCloseAbs)
 import TangoHL (DeviceProxyPtr, HaskellTangoDevState (Moving, On, Running, Unknown), readDoubleAttribute, readStateAttribute, writeDoubleAttribute)
 
 data ColliAxisValues a = ColliAxisValues
   { yValue :: a,
     zValue :: a
   }
-  deriving (Functor, Foldable, Traversable)
+  deriving (Functor, Foldable, Traversable, Show)
 
 instance Applicative ColliAxisValues where
   liftA2 f (ColliAxisValues a0 a1) (ColliAxisValues b0 b1) = ColliAxisValues (f a0 b0) (f a1 b1)
@@ -45,6 +45,7 @@ data StaticColliConfig = StaticColliConfig
     movementDurationS :: NominalDiffTime,
     proxies :: ColliAxisValues DeviceProxyPtr
   }
+  deriving (Show)
 
 data ColliConfigJson = ColliConfigJson
   { inY :: Double,
@@ -85,6 +86,7 @@ data ColliState = ColliState
     desiredStatus :: DesiredStatus,
     movementBeginning :: Maybe UTCTime
   }
+  deriving (Show)
 
 colliUpdateDesiredPosition :: ColliState -> DesiredStatus -> ColliState
 colliUpdateDesiredPosition s d = s {desiredStatus = d}
@@ -140,7 +142,8 @@ isColliMoving state = do
   let isMoving = getAny $ foldMap (Any . (== Moving)) states
   case state.movementBeginning of
     Nothing -> pure isMoving
-    Just movementBeginning' ->
+    Just movementBeginning' -> do
+      logToConsole $ "movement beginning, diff: " <> pack (show (currentTime `diffUTCTime` movementBeginning'))
       pure (isMoving || (currentTime `diffUTCTime` movementBeginning' < state.static.movementDurationS))
 
 isColliOut :: (MonadIO m) => ColliState -> m Bool

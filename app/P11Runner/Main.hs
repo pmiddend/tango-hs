@@ -11,6 +11,7 @@ module Main where
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newEmptyMVar, putMVar, readMVar)
+import Control.Exception (catch)
 import Control.Monad (forM_, when)
 import Control.Monad.Free (Free)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -28,6 +29,7 @@ import qualified Data.Text.Lazy as TL
 import Data.Time (NominalDiffTime, addUTCTime, getCurrentTime, secondsToNominalDiffTime)
 import Data.Time.Clock (UTCTime)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
+import Data.Time.Format.ISO8601 (iso8601Show)
 import Foreign.C (CInt, CLong)
 import Foreign.C.String (CString, newCString)
 import Foreign.Marshal (free, peekArray)
@@ -35,7 +37,7 @@ import Foreign.Marshal.Alloc (free, malloc)
 import Foreign.Marshal.Utils (new)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
 import Foreign.Storable (peek, poke)
-import P11Runner.CollimatorState (ColliAxisValues (ColliAxisValues), ColliState, colliInit, colliMoveOut, colliMoveToDesired, isColliInDesired, isColliMoving)
+import P11Runner.CollimatorState (ColliAxisValues (ColliAxisValues), ColliState, colliInit, colliMoveOut, colliMoveToDesired, isColliInDesired, isColliMoving, isColliOut)
 import P11Runner.DetectorTowerState
   ( DetectorTowerConfig (..),
     DetectorTowerState,
@@ -50,7 +52,7 @@ import P11Runner.DetectorTowerState
     updateDetectorTowerMeasurementDistance,
   )
 import P11Runner.Markdown (Markdown, markdownBold, markdownEmph, markdownPlain)
-import P11Runner.Util (numberIsClose, numberIsCloseAbs)
+import P11Runner.Util (logToConsole, numberIsClose, numberIsCloseAbs)
 import System.Environment (getArgs, getProgName)
 import Tango.Common
   ( HaskellAttrWriteType (Read, ReadWrite),
@@ -79,9 +81,11 @@ import TangoHL
   ( AttributeName (AttributeName),
     CommandName (CommandName),
     DeviceProxyPtr,
+    HaskellDevFailed (HaskellDevFailed),
     PropApplicative,
     PropertyName (PropertyName),
     ServerStatus (ServerStatus),
+    TangoException (TangoException),
     TangoServerAttribute (TangoServerAttribute, tangoServerAttributeAccessor, tangoServerAttributeName),
     TangoServerAttributeAccessor (TangoServerAttributeAccessor),
     TangoServerAttributeTypes (TangoServerAttributeTypeDouble, TangoServerAttributeTypeString),
@@ -89,6 +93,10 @@ import TangoHL
     TangoUrl,
     TypedProperty (TypedProperty),
     commandInOutVoid,
+    devFailedDesc,
+    devFailedOrigin,
+    devFailedReason,
+    devFailedSeverity,
     gatherTypedPropertyNames,
     newDeviceProxy,
     readBoolAttribute,
@@ -157,6 +165,11 @@ data DesiredCollimatorStatus = DesiredIn | DesiredOut deriving (Eq, Show)
 
 data LogLevel = LogLevelInfo | LogLevelError | LogLevelDebug
 
+instance Show LogLevel where
+  show LogLevelInfo = "INFO"
+  show LogLevelError = "ERROR"
+  show LogLevelDebug = "DEBUG"
+
 instance ToJSON LogLevel where
   toJSON LogLevelInfo = toJSON ("info" :: Text)
   toJSON LogLevelError = toJSON ("error" :: Text)
@@ -176,7 +189,6 @@ data DeviceData = DeviceData
     currentRunnerState :: RunnerState,
     currentColliState :: ColliState,
     currentDetectorTowerState :: DetectorTowerState,
-    colliState :: ColliState,
     useChopper :: Bool,
     exposureTimeMs :: Double,
     numberOfImages :: Int,
@@ -221,9 +233,6 @@ readDeviceData = do
 readVar :: P11RunnerMonad (MVar DeviceData)
 readVar = gets runnerVar
 
-logToConsole :: Text -> P11RunnerMonad ()
-logToConsole = liftIO . putStrLn
-
 updatePreparingForMeasurement :: RunnerState -> P11RunnerMonad ()
 updatePreparingForMeasurement calculatedState = do
   case calculatedState of
@@ -231,7 +240,7 @@ updatePreparingForMeasurement calculatedState = do
       appendMsg LogLevelInfo "colli timeout expired, ready to measure"
       updateRunnerState RunnerStateReadyToMeasure
     RunnerStateUnknownMoving reason -> do
-      logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
+      logToConsole $ "we are still moving, specifically: " <> reason
     RunnerStateUnknownStatic reason -> do
       logToConsole $
         "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
@@ -240,14 +249,13 @@ updatePreparingForMeasurement calculatedState = do
       updateRunnerState otherState
 
 updatePreparingToOpenHutch :: RunnerState -> P11RunnerMonad ()
-updatePreparingToOpenHutch calculatedState = do
-  now <- liftIO getCurrentTime
+updatePreparingToOpenHutch calculatedState =
   case calculatedState of
     RunnerStateReadyToOpenHutch -> do
       appendMsg LogLevelInfo "colli timeout expired, ready to open hutch"
       updateRunnerState RunnerStateReadyToOpenHutch
     RunnerStateUnknownMoving reason -> do
-      logToConsole $ "after colli timeout, we are still moving, specifically: " <> reason
+      logToConsole $ "we are still moving, specifically: " <> reason
     RunnerStateUnknownStatic reason -> do
       logToConsole $
         "timeout for preparing to for measurement expired, but we determined a static state (reason " <> reason <> "), this is okay if there's a slight timing mismatch"
@@ -259,8 +267,8 @@ commandUpdate :: P11RunnerMonad ()
 commandUpdate = do
   currentData <- readDeviceData
   newState <- liftIO $ calculateState currentData
-  liftIO $ putStrLn $ "calculated state: " <> pack (show newState)
-  liftIO $ putStrLn $ "current state: " <> pack (show currentData.currentRunnerState)
+  logToConsole $ "calculated state: " <> pack (show newState)
+  logToConsole $ "current state: " <> pack (show currentData.currentRunnerState)
   case currentData.currentRunnerState of
     RunnerStatePreparingForMeasurement ->
       updatePreparingForMeasurement newState
@@ -272,7 +280,7 @@ commandUpdate = do
       instance' <- gets runnerInstance
       writeInstanceState instance' (runnerStateToTangoState runnerState.currentRunnerState)
     RunnerStateUnknownMoving reason -> do
-      liftIO $ putStrLn $ "in moving state because of " <> reason
+      logToConsole $ "in moving state because of " <> reason
       updateRunnerState newState
     _ -> pure ()
 
@@ -314,6 +322,7 @@ appendMsg :: LogLevel -> Text -> P11RunnerMonad ()
 appendMsg logLevel' text' = do
   var <- readVar
   liftIO (appendMsgVar var logLevel' text')
+  logToConsole (packShow logLevel' <> " " <> text')
 
 closeFastShutter :: P11RunnerMonad ()
 closeFastShutter = do
@@ -354,6 +363,7 @@ updateColliState newState = do
 
 commandPrepareForMeasurement :: P11RunnerMonad ()
 commandPrepareForMeasurement = do
+  logToConsole "command: prepare for measurement"
   currentData <- readDeviceData
   case currentData.currentRunnerState of
     RunnerStatePreparingForMeasurement ->
@@ -372,7 +382,7 @@ commandPrepareForMeasurement = do
             LogLevelInfo
             (markdownBold "stream" <> " not " <> markdownEmph "busy" <> " but " <> packShow other <> ", not aborting")
 
-      (newColliState, colliLog) <- colliMoveToDesired currentData.colliState
+      (newColliState, colliLog) <- colliMoveToDesired currentData.currentColliState
       updateColliState newColliState
       appendMsg LogLevelInfo colliLog
 
@@ -396,6 +406,7 @@ commandPrepareForMeasurement = do
 
 commandPrepareToOpenHutch :: P11RunnerMonad ()
 commandPrepareToOpenHutch = do
+  logToConsole "command: prepare to open hutch"
   currentData <- readDeviceData
   case currentData.currentRunnerState of
     RunnerStatePreparingToOpenHutch ->
@@ -426,7 +437,7 @@ commandPrepareToOpenHutch = do
             LogLevelInfo
             (markdownBold "stream" <> " not " <> markdownEmph "busy" <> " but " <> packShow other <> ", not aborting")
 
-      (newColliState, colliLog) <- colliMoveOut currentData.colliState
+      (newColliState, colliLog) <- colliMoveOut currentData.currentColliState
       updateColliState newColliState
       appendMsg LogLevelInfo colliLog
 
@@ -521,17 +532,15 @@ calculateState
                     exposureTimeMs,
                     numberOfImages,
                     currentDetectorTowerState,
-                    colliState
+                    currentColliState
                   }
                 ) = do
     chopperState <- readStateAttribute chopper
     shieldIsDown' <- readBoolAttribute detectorTower "ShieldIsDown"
     shieldIsUp <- readBoolAttribute detectorTower "ShieldIsUp"
-    colliMoving <- isColliMoving colliState
-    if detectorTowerIsMoving currentDetectorTowerState
-      || colliMoving
-      || chopperState /= On
-      || shieldIsUp == shieldIsDown'
+    colliMoving <- isColliMoving currentColliState
+    latestTowerState <- detectorTowerUpdate currentDetectorTowerState
+    if detectorTowerIsMoving latestTowerState || colliMoving || chopperState /= On || shieldIsUp == shieldIsDown'
       then
         pure $
           RunnerStateUnknownMoving $
@@ -550,7 +559,7 @@ calculateState
         if detectorTowerInMeasurementDistance currentDetectorTowerState
           then do
             addMessage "detector tower is in measuring distance"
-            colliInDesired <- isColliInDesired colliState
+            colliInDesired <- isColliInDesired currentColliState
             if not colliInDesired
               then finishUnknownStatic ", but the colli is not in desired position"
               else do
@@ -633,7 +642,11 @@ calculateState
                         fastShutterOpen <- liftIO $ readFastShutterOpen fastShutter
                         if fastShutterOpen
                           then finishUnknownStatic ", but the fast shutter is open"
-                          else pure RunnerStateReadyToMeasure
+                          else do
+                            colliIsOut <- isColliOut currentColliState
+                            if not colliIsOut
+                              then finishUnknownStatic ", but the colli is not out"
+                              else pure RunnerStateReadyToOpenHutch
 
 data P11RunnerProperties = P11RunnerProperties
   { propDetectorTowerIdentifier :: TangoUrl,
@@ -725,7 +738,7 @@ initCallback deviceData instance' = do
             let deviceDataContent =
                   DeviceData
                     { proxies = proxies,
-                      colliState = colliState',
+                      currentColliState = colliState',
                       currentRunnerState = RunnerStateUnknownMoving "before first connect call",
                       currentDetectorTowerState = towerState,
                       useChopper = False,
@@ -821,6 +834,13 @@ main = do
           )
       ]
       (initCallback deviceData)
+  putStrLn "starting server now"
   case initedServerEither of
     Left e -> putStrLn ("error initializing: " <> e)
-    Right initedServer -> tangoServerStart initedServer
+    Right initedServer -> do
+      let printExceptionStep :: HaskellDevFailed Text -> Text
+          printExceptionStep (HaskellDevFailed {devFailedDesc, devFailedReason, devFailedOrigin, devFailedSeverity}) = devFailedDesc <> ", " <> devFailedReason
+          printTangoException :: TangoException -> IO ()
+          printTangoException (TangoException steps) =
+            putStrLn $ intercalate "\n" $ printExceptionStep <$> steps
+      catch (tangoServerStart initedServer) printTangoException
