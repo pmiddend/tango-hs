@@ -17,6 +17,7 @@ module Tango.Common
     tango_poll_command,
     tango_stop_poll_command,
     tango_poll_attribute,
+    tango_throw_exception,
     tango_stop_poll_attribute,
     HaskellAttrWriteType (..),
     tango_command_inout,
@@ -1032,3 +1033,7 @@ foreign import capi "c_tango.h tango_poll_attribute"
 
 foreign import capi "c_tango.h tango_stop_poll_attribute"
   tango_stop_poll_attribute :: DeviceProxyPtr -> CString -> IO TangoError
+
+-- FIXME: This function is not memory-safe!
+foreign import capi "c_tango.h tango_throw_exception"
+  tango_throw_exception :: CString -> IO ()

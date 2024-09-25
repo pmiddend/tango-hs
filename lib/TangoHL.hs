@@ -17,6 +17,7 @@ module TangoHL
     commandInOutVoid,
     HaskellDevFailed (HaskellDevFailed),
     devFailedDesc,
+    throwTangoException,
     devFailedReason,
     devFailedOrigin,
     devFailedSeverity,
@@ -32,6 +33,7 @@ module TangoHL
     DeviceProxyPtr,
     PropertyName (PropertyName),
     TangoServerAttribute (TangoServerAttribute, tangoServerAttributeName, tangoServerAttributeAccessor),
+    HasTangoGetterAndSetter,
     TangoServerAttributeAccessor (TangoServerAttributeAccessor),
     CommandName (CommandName),
     AttributeName (AttributeName),
@@ -102,6 +104,7 @@ import Tango.Common
     tango_get_timeout_millis,
     tango_read_attribute,
     tango_set_timeout_millis,
+    tango_throw_exception,
     tango_write_attribute,
   )
 import Tango.Server
@@ -556,3 +559,8 @@ resolveTypedProperties ptr myAp = runExceptT (resolveTypedProperties' ptr myAp)
 writeInstanceState :: (MonadIO m) => DeviceInstancePtr -> HaskellTangoDevState -> m ()
 writeInstanceState instance' state' =
   liftIO $ tango_server_set_state instance' (fromIntegral (fromEnum state'))
+
+throwTangoException :: (MonadIO m) => Text -> m ()
+throwTangoException desc = do
+  str <- newCString (unpack desc)
+  liftIO $ tango_throw_exception str

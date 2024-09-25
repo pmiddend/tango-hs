@@ -267,7 +267,19 @@ public:
     {
       Tango::DevLong64 w_val;
       att.get_write_value(w_val);
-      def.set_callback(dev, &w_val);
+      std::cout << "throwing from C++ Code now\n";
+      try {
+	TANGO_THROW_EXCEPTION(Tango::API_DummyException, "shit");
+      } catch (Tango::DevFailed &tango_exception) {
+	std::cout << "caught the harmeless tango exception\n";
+      }
+      std::cout << "before set_callback (triggers exception indirectly)\n";
+      try {
+        def.set_callback(dev, &w_val);
+      } catch (Tango::DevFailed &tango_exception) {
+	std::cout << "caught an indirect tango exception\n";
+      }
+      std::cout << "after set_callback\n";
     }
     else if (def.data_type == DEV_DOUBLE)
     {
@@ -677,4 +689,12 @@ void tango_server_store_user_data(device_instance_ptr ptr, void *data)
 void *tango_server_get_user_data(device_instance_ptr ptr)
 {
   return static_cast<JustOneAttribute *>(ptr)->get_user_data();
+}
+
+// not really a server function, we have to move this
+void tango_throw_exception(char *message) {
+  std::string copy_of_message{message};
+  std::cout << "throwing exception with message " << message << std::endl;
+  // TANGO_THROW_EXCEPTION(Tango::API_DummyException, copy_of_message.c_str());
+  TANGO_THROW_EXCEPTION(Tango::API_DummyException, "dammmmn");
 }

@@ -11,7 +11,7 @@ module Main where
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newEmptyMVar, putMVar, readMVar)
-import Control.Exception (catch)
+import Control.Exception (IOException, catch, try)
 import Control.Monad (forM_, when)
 import Control.Monad.Free (Free)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -24,7 +24,7 @@ import Data.Sequence (Seq, ViewR (EmptyR, (:>)), viewr, (<|))
 import Data.String (IsString)
 import Data.Text (Text, intercalate, pack, strip, unpack)
 import Data.Text.Encoding (encodeUtf8)
-import Data.Text.IO (putStrLn)
+import Data.Text.IO (putStrLn, readFile, writeFile)
 import qualified Data.Text.Lazy as TL
 import Data.Time (NominalDiffTime, addUTCTime, getCurrentTime, secondsToNominalDiffTime)
 import Data.Time.Clock (UTCTime)
@@ -77,6 +77,7 @@ import TangoHL
   ( AttributeName (AttributeName),
     CommandName (CommandName),
     DeviceProxyPtr,
+    HasTangoGetterAndSetter,
     HaskellDevFailed (HaskellDevFailed),
     PropApplicative,
     PropertyName (PropertyName),
@@ -108,13 +109,14 @@ import TangoHL
     tangoServerInit,
     tangoServerStart,
     tangoUrlFromText,
+    throwTangoException,
     writeDoubleAttribute,
     writeInstanceState,
   )
 import Text.Read (readMaybe)
 import qualified UnliftIO
 import UnliftIO.Foreign (peekCString, with, withArray, withCString)
-import Prelude hiding (putStrLn)
+import Prelude hiding (putStrLn, readFile, writeFile)
 
 data ChopperState
   = ChopperStateMovingIn
@@ -182,6 +184,7 @@ instance ToJSON Message where
 data DeviceData = DeviceData
   { proxies :: Proxies,
     currentRunnerState :: RunnerState,
+    runIdFilePath :: FilePath,
     currentColliState :: ColliState,
     currentDetectorTowerState :: DetectorTowerConfig,
     useChopper :: Bool,
@@ -652,6 +655,7 @@ calculateState
 data P11RunnerProperties = P11RunnerProperties
   { propDetectorTowerIdentifier :: TangoUrl,
     propChopperIdentifier :: TangoUrl,
+    propRunIdFilePath :: FilePath,
     propColliYIdentifier :: TangoUrl,
     propColliZIdentifier :: TangoUrl,
     propEigerStreamIdentifier :: TangoUrl,
@@ -675,6 +679,7 @@ p11RunnerProperties =
   P11RunnerProperties
     <$> readTypedProperty "detector_tower_identifier" tangoUrlFromText
     <*> readTypedProperty "chopper_identifier" tangoUrlFromText
+    <*> readTypedProperty "run_id_file_path" (Right . unpack)
     <*> readTypedProperty "colli_motor_identifier_y" tangoUrlFromText
     <*> readTypedProperty "colli_motor_identifier_z" tangoUrlFromText
     <*> readTypedProperty "eiger_stream_identifier" tangoUrlFromText
@@ -697,6 +702,7 @@ initCallback deviceData instance' = do
       ( P11RunnerProperties
           { propDetectorTowerIdentifier,
             propChopperIdentifier,
+            propRunIdFilePath,
             propColliYIdentifier,
             propColliZIdentifier,
             propEigerStreamIdentifier,
@@ -744,7 +750,8 @@ initCallback deviceData instance' = do
                       useChopper = False,
                       exposureTimeMs = 7.6,
                       numberOfImages = 1000,
-                      msgTrace = mempty
+                      msgTrace = mempty,
+                      runIdFilePath = propRunIdFilePath
                     }
             putMVar deviceData deviceDataContent
             putStrLn "initializing successful"
@@ -763,6 +770,31 @@ writeDetectorTowerMeasurementDistance newDistance =
           }
     )
 
+readRunId :: P11RunnerMonad Int
+readRunId = do
+  dd <- readDeviceData
+  fileContents <- liftIO $ try (readFile dd.runIdFilePath)
+  case fileContents of
+    Left (_ :: IOException) -> do
+      logToConsole $ "couldn't read run ID file " <> pack dd.runIdFilePath <> ", returning 0"
+      pure 0
+    Right v ->
+      case readMaybe (unpack (strip v)) of
+        Nothing -> do
+          logToConsole $ "read run ID file contains junk data \"" <> v <> "\", please clean up"
+          pure 0
+        Just runId -> pure runId
+
+writeRunId :: Int -> P11RunnerMonad ()
+writeRunId newRunId = do
+  dd <- readDeviceData
+  result <- liftIO $ try $ writeFile dd.runIdFilePath (pack (show newRunId) <> "\n")
+  case result of
+    Left (_ :: IOException) -> do
+      logToConsole "throwing exception now"
+      throwTangoException "exception"
+    Right v -> pure ()
+
 main :: IO ()
 main = do
   deviceData <- newEmptyMVar
@@ -778,36 +810,39 @@ main = do
                     }
                 )
           )
-  initedServerEither <-
-    tangoServerInit
-      (gatherTypedPropertyNames p11RunnerProperties)
-      (ServerStatus "")
-      Unknown
-      [ TangoServerAttribute
-          { tangoServerAttributeName = AttributeName "detector_tower_measurement_distance",
+      wrapAttribute :: (HasTangoGetterAndSetter a) => Text -> P11RunnerMonad a -> Maybe (a -> P11RunnerMonad ()) -> TangoServerAttribute
+      wrapAttribute attributeName readAccessor maybeWriteAccessor =
+        TangoServerAttribute
+          { tangoServerAttributeName = AttributeName attributeName,
             tangoServerAttributeAccessor =
               TangoServerAttributeAccessor
                 ( \instancePtr ->
                     evalStateT
-                      readDetectorTowerMeasurementDistance
+                      readAccessor
                       ( P11RunnerState
                           { runnerVar = deviceData,
                             runnerInstance = instancePtr
                           }
                       )
                 )
-                ( Just
-                    ( \instancePtr newDistance ->
-                        evalStateT
-                          (writeDetectorTowerMeasurementDistance newDistance)
-                          ( P11RunnerState
-                              { runnerVar = deviceData,
-                                runnerInstance = instancePtr
-                              }
-                          )
-                    )
+                ( ( \writeAccessor instancePtr newValue -> evalStateT (writeAccessor newValue) (P11RunnerState {runnerVar = deviceData, runnerInstance = instancePtr})
+                  )
+                    <$> maybeWriteAccessor
                 )
           }
+  initedServerEither <-
+    tangoServerInit
+      (gatherTypedPropertyNames p11RunnerProperties)
+      (ServerStatus "")
+      Unknown
+      [ wrapAttribute
+          "detector_tower_measurement_distance"
+          readDetectorTowerMeasurementDistance
+          (Just writeDetectorTowerMeasurementDistance),
+        wrapAttribute
+          "run_id"
+          readRunId
+          (Just writeRunId)
       ]
       [ wrapVoidCommand "update" commandUpdate,
         wrapVoidCommand "prepare_for_measurement" commandPrepareForMeasurement,

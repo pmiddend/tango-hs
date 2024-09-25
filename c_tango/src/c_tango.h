@@ -528,6 +528,8 @@ extern "C"
   void tango_server_add_property(char *);
   char const *tango_server_read_property(device_instance_ptr, char *);
 
+  void tango_throw_exception(char *);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
