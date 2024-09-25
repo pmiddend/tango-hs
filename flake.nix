@@ -27,7 +27,7 @@
             };
           };
 
-          packageName = "tango-hs";
+          packageName = "hs-tango";
 
           my-cpptango = pkgs.tango-cpptango.overrideAttrs (old: {
             src = /home/pmidden/code/tango-projects/cppTango;
@@ -88,7 +88,7 @@
               ];
               # CPPZMQ_INCLUDE = "${pkgs.cppzmq}";
               # inputsFrom = map (__getAttr "env") (__attrValues self.packages.${system});
-              inputsFrom = [ self.packages.${system}.tango-hs.env ];
+              inputsFrom = [ self.packages.${system}.hs-tango.env ];
             };
           devShell = self.devShells.${system}.default;
         });

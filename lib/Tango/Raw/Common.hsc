@@ -8,7 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Tango.Common
+module Tango.Raw.Common
   ( tango_create_device_proxy,
     tango_delete_device_proxy,
     tango_read_attribute,
