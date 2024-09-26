@@ -16,6 +16,7 @@ module Tango.Raw.Common
     HaskellTangoDevState (..),
     tango_poll_command,
     tango_stop_poll_command,
+    tango_free_AttributeInfoList,
     tango_poll_attribute,
     tango_throw_exception,
     tango_stop_poll_attribute,
@@ -43,6 +44,7 @@ module Tango.Raw.Common
     tango_get_attribute_list,
     tango_read_attributes,
     tango_get_device_exported,
+    HaskellAttributeInfo (..),
     HaskellDataFormat (..),
     HaskellTangoVarArray (..),
     tango_put_device_property,
@@ -906,6 +908,9 @@ foreign import capi "c_tango.h tango_command_inout"
 
 foreign import capi "c_tango.h tango_free_AttributeData"
   tango_free_AttributeData :: Ptr HaskellAttributeData -> IO ()
+
+foreign import capi "c_tango.h tango_free_AttributeInfoList"
+  tango_free_AttributeInfoList :: Ptr HaskellAttributeInfoList -> IO ()
 
 foreign import capi "c_tango.h tango_free_CommandData"
   tango_free_CommandData :: Ptr HaskellCommandData -> IO ()
