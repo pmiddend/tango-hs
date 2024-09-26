@@ -51,6 +51,9 @@ module Tango.Client
     readDoubleAttribute,
     readDoubleSpectrumAttribute,
     readDoubleImageAttribute,
+    readEnumAttribute,
+    readEnumSpectrumAttribute,
+    readEnumImageAttribute,
     tangoUrlFromText,
     DeviceProxyPtr,
     CommandName (CommandName),
@@ -124,7 +127,7 @@ import Text.Show (Show, show)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
 import UnliftIO.Foreign (CDouble, CLong, FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
-import Prelude (Double, Enum (fromEnum), Float, Num ((*)), error, fromIntegral, realToFrac, undefined)
+import Prelude (Double, Enum (fromEnum, toEnum), Float, Num ((*)), error, fromIntegral, realToFrac, undefined)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
@@ -539,6 +542,37 @@ readStateImageAttribute =
         HaskellAttributeDataStateArray (HaskellTangoVarArray {varArrayValues}) -> do
           arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
           pure $ Just $ Image arrayResult (fromIntegral (dimX a)) (fromIntegral (dimY a))
+        _ -> pure Nothing
+
+readEnumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m t
+readEnumAttribute =
+  readAttributeSimple extract
+  where
+    extract (HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues})) = do
+      v <- peek varArrayValues
+      pure (Just (toEnum (fromIntegral v)))
+    extract _ = pure Nothing
+
+readEnumSpectrumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m [t]
+readEnumSpectrumAttribute =
+  readAttributeGeneral extract
+  where
+    extract a =
+      case tangoAttributeData a of
+        HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues}) -> do
+          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
+          pure $ Just (toEnum . fromIntegral <$> arrayResult)
+        _ -> pure Nothing
+
+readEnumImageAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (Image t)
+readEnumImageAttribute =
+  readAttributeGeneral extract
+  where
+    extract a =
+      case tangoAttributeData a of
+        HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues}) -> do
+          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
+          pure $ Just $ Image (toEnum . fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
         _ -> pure Nothing
 
 newtype CommandName = CommandName Text

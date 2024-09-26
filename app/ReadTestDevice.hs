@@ -5,6 +5,8 @@ module Main where
 
 import Tango.Client
 
+data ScalarEnum = Label0 | Label1 | Label2 deriving (Enum, Show)
+
 main =
   case tangoUrlFromText "sys/tg_test/1" of
     Left e -> error "couldn't resolve tango URL"
@@ -24,3 +26,6 @@ main =
       attributeList <- getConfigsForAttributes proxy [AttributeName "enum_scalar_ro"]
 
       print attributeList
+
+      enumResult <- readEnumAttribute proxy (AttributeName "enum_scalar")
+      putStrLn $ "enum_scalar is " <> show (enumResult :: ScalarEnum)
