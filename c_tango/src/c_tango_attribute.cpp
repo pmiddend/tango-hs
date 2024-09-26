@@ -226,7 +226,6 @@ ErrorStack *tango_get_attribute_config(
     // allocate the AttributeInfoList for the number of attributes returned
     INIT_SEQ(*attr_info_list, AttributeInfo, tango_attr_info_list->size());
 
-    std::cerr << "looping over " << tango_attr_info_list->size() << " attributes" << std::endl;
     // loop over all returned attributes and convert the data
     for (uint32_t i = 0; i < tango_attr_info_list->size(); i++)
     {
@@ -541,7 +540,6 @@ static void convert_attr_query(Tango::AttributeInfoEx &tango_attr_info, Attribut
   attr_info->label = strdup(tango_attr_info.label.c_str());
   attr_info->unit = strdup(tango_attr_info.unit.c_str());
   attr_info->standard_unit = strdup(tango_attr_info.standard_unit.c_str());
-  std::cerr << "standard unit: " << attr_info->standard_unit << std::endl;
   attr_info->display_unit = strdup(tango_attr_info.display_unit.c_str());
   attr_info->format = strdup(tango_attr_info.format.c_str());
   attr_info->min_value = strdup(tango_attr_info.min_value.c_str());

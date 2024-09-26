@@ -97,6 +97,7 @@ import Tango.Raw.Common
     HaskellDataFormat (..),
     HaskellDataQuality (..),
     HaskellDevFailed (HaskellDevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
+    HaskellDispLevel,
     HaskellErrorStack (errorStackLength, errorStackSequence),
     HaskellTangoAttributeData (HaskellAttributeDataBoolArray, HaskellAttributeDataDoubleArray, HaskellAttributeDataFloatArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataShortArray, HaskellAttributeDataStateArray, HaskellAttributeDataStringArray, HaskellAttributeDataULong64Array, HaskellAttributeDataULongArray, HaskellAttributeDataUShortArray),
     HaskellTangoCommandData (..),
@@ -556,17 +557,67 @@ throwTangoException desc = do
   liftIO $ tango_throw_exception str
 
 data AttributeInfo = AttributeInfo
-  { attributeInfoWriteType :: HaskellAttrWriteType
+  { attributeInfoWritable :: !HaskellAttrWriteType,
+    attributeInfoDataFormat :: !HaskellDataFormat,
+    attributeInfoDataType :: !HaskellTangoDataType,
+    attributeInfoMaxDimX :: !Int,
+    attributeInfoMaxDimY :: !Int,
+    attributeInfoDescription :: !Text,
+    attributeInfoLabel :: !Text,
+    attributeInfoUnit :: !Text,
+    attributeInfoStandardUnit :: !Text,
+    attributeInfoDisplayUnit :: !Text,
+    attributeInfoFormat :: !Text,
+    attributeInfoMinValue :: !Text,
+    attributeInfoMaxValue :: !Text,
+    attributeInfoMinAlarm :: !Text,
+    attributeInfoMaxAlarm :: !Text,
+    attributeInfoWritableAttrName :: !Text,
+    attributeInfoDispLevel :: !HaskellDispLevel,
+    attributeInfoEnumLabels :: [Text]
   }
   deriving (Show)
 
-convertAttributeInfo :: CommonRaw.HaskellAttributeInfo -> AttributeInfo
-convertAttributeInfo ai =
-  AttributeInfo
-    (CommonRaw.attributeInfoWritable ai)
-    getConfigsForAttributes ::
-    DeviceProxy -> [AttributeName] -> IO [AttributeInfo]
+convertAttributeInfo :: CommonRaw.HaskellAttributeInfo -> IO AttributeInfo
+convertAttributeInfo ai = do
+  description <- peekCString (CommonRaw.attributeInfoDescription ai)
+  label <- peekCString (CommonRaw.attributeInfoLabel ai)
+  unit <- peekCString (CommonRaw.attributeInfoUnit ai)
+  standardUnit <- peekCString (CommonRaw.attributeInfoStandardUnit ai)
+  displayUnit <- peekCString (CommonRaw.attributeInfoDisplayUnit ai)
+  format <- peekCString (CommonRaw.attributeInfoFormat ai)
+  minValue <- peekCString (CommonRaw.attributeInfoMinValue ai)
+  maxValue <- peekCString (CommonRaw.attributeInfoMaxValue ai)
+  minAlarm <- peekCString (CommonRaw.attributeInfoMinAlarm ai)
+  maxAlarm <- peekCString (CommonRaw.attributeInfoMaxAlarm ai)
+  writableAttrName <- peekCString (CommonRaw.attributeInfoWritableAttrName ai)
+  enumLabelsPtrList <-
+    peekArray
+      (fromIntegral (CommonRaw.attributeInfoEnumLabelsCount ai))
+      (CommonRaw.attributeInfoEnumLabels ai)
+  enumLabelsList <- traverse peekCString enumLabelsPtrList
+  pure $
+    AttributeInfo
+      (CommonRaw.attributeInfoWritable ai)
+      (CommonRaw.attributeInfoDataFormat ai)
+      (CommonRaw.attributeInfoDataType ai)
+      (fromIntegral (CommonRaw.attributeInfoMaxDimX ai))
+      (fromIntegral (CommonRaw.attributeInfoMaxDimY ai))
+      (pack description)
+      (pack label)
+      (pack unit)
+      (pack standardUnit)
+      (pack displayUnit)
+      (pack format)
+      (pack minValue)
+      (pack maxValue)
+      (pack minAlarm)
+      (pack maxAlarm)
+      (pack writableAttrName)
+      (CommonRaw.attributeInfoDispLevel ai)
+      (pack <$> enumLabelsList)
 
+getConfigsForAttributes :: DeviceProxy -> [AttributeName] -> IO [AttributeInfo]
 getConfigsForAttributes deviceProxyPtr attributeNames = do
   let attributeNameToCString :: AttributeName -> IO CString
       attributeNameToCString (AttributeName t) = newCString (unpack t)
@@ -580,4 +631,4 @@ getConfigsForAttributes deviceProxyPtr attributeNames = do
             \_ -> do
               outputPeeked <- peek outputPtr
               elements <- peekArray (fromIntegral (attributeInfoListLength outputPeeked)) (attributeInfoListSequence outputPeeked)
-              pure (convertAttributeInfo <$> elements)
+              traverse convertAttributeInfo elements

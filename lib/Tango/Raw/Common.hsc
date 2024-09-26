@@ -14,6 +14,7 @@ module Tango.Raw.Common
     tango_read_attribute,
     tango_write_attribute,
     HaskellTangoDevState (..),
+    HaskellDispLevel (..),
     tango_poll_command,
     tango_stop_poll_command,
     tango_free_AttributeInfoList,
