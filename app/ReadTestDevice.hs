@@ -1,8 +1,10 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
+import Data.Text.IO qualified as TIO
 import Tango.Client
 
 data ScalarEnum = Label0 | Label1 | Label2 deriving (Enum, Show)
@@ -24,8 +26,12 @@ main =
       putStrLn $ "enum_scalar is " <> show enumResult
 
       attributeList <- getConfigsForAttributes proxy [AttributeName "enum_scalar_ro"]
+      putStrLn $ "attribute description for \"enum_scalar_ro\": " <> show attributeList
 
-      print attributeList
+      enumResult' <- readEnumAttribute proxy (AttributeName "enum_scalar")
+      putStrLn $ "enum_scalar (as Haskell enum) is " <> show (enumResult' :: ScalarEnum)
 
-      enumResult <- readEnumAttribute proxy (AttributeName "enum_scalar")
-      putStrLn $ "enum_scalar is " <> show (enumResult :: ScalarEnum)
+      stringImage <- readStringImageAttribute proxy (AttributeName "string_image_ro")
+      putStrLn "string image contents follow:"
+      mapM_ TIO.putStrLn (imageContent stringImage)
+      putStrLn "string image end"

@@ -7,7 +7,6 @@
 module Tango.Client
   ( withDeviceProxy,
     checkResult,
-    readStringAttribute,
     writeLong64Attribute,
     writeDoubleAttribute,
     getConfigsForAttributes,
@@ -33,6 +32,9 @@ module Tango.Client
     readUShortAttribute,
     readUShortSpectrumAttribute,
     readUShortImageAttribute,
+    readStringAttribute,
+    readStringSpectrumAttribute,
+    readStringImageAttribute,
     readLongAttribute,
     readLongSpectrumAttribute,
     readLongImageAttribute,
@@ -127,11 +129,21 @@ import Text.Show (Show, show)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
 import UnliftIO.Foreign (CDouble, CLong, FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
-import Prelude (Double, Enum (fromEnum, toEnum), Float, Num ((*)), error, fromIntegral, realToFrac, undefined)
+import Prelude (Double, Enum (fromEnum, toEnum), Float, Integral, Num ((*)), error, fromIntegral, realToFrac, undefined)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
 instance Exception TangoException
+
+peekCStringText :: (UnliftIO.MonadUnliftIO m) => CString -> m Text
+peekCStringText x = do
+  result <- liftIO (peekCString x)
+  pure (pack result)
+
+peekCStringArrayText :: (UnliftIO.MonadUnliftIO m, Integral i) => i -> Ptr CString -> m [Text]
+peekCStringArrayText len x = do
+  ptrList <- liftIO $ peekArray (fromIntegral len) x
+  traverse peekCStringText ptrList
 
 checkResult :: (UnliftIO.MonadUnliftIO m) => m (Ptr HaskellErrorStack) -> m ()
 checkResult action = do
@@ -139,7 +151,7 @@ checkResult action = do
   when (es /= nullPtr) $ do
     errorStack <- liftIO $ peek es
     stackItems <- peekArray (fromIntegral (errorStackLength errorStack)) (errorStackSequence errorStack)
-    formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse ((pack <$>) . peekCString)) stackItems
+    formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse peekCStringText) stackItems
     throw (TangoException formattedStackItems)
 
 newtype TangoUrl = TangoUrl Text
@@ -220,16 +232,6 @@ writeDoubleAttribute proxyPtr attributeName newValue = do
 -- | Newtype wrapper to wrap an attribute name
 newtype AttributeName = AttributeName Text
 
--- | Read a string attribute and decode it into a text
-readStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Text
-readStringAttribute = readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues})) = do
-      firstString <- peek varArrayValues
-      result <- pack <$> peekCString firstString
-      pure (Just result)
-    extract _ = pure Nothing
-
 readAttributeGeneral :: (MonadIO m) => (HaskellAttributeData -> IO (Maybe a)) -> DeviceProxy -> AttributeName -> m a
 readAttributeGeneral extractValue proxyPtr (AttributeName attributeNameHaskell) =
   liftIO $ withCString (unpack attributeNameHaskell) $ \attributeName -> do
@@ -251,6 +253,38 @@ data Image a = Image
     imageDimY :: Int
   }
   deriving (Show)
+
+-- | Read a string attribute and decode it into a text
+readStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Text
+readStringAttribute = readAttributeSimple extract
+  where
+    extract (HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues})) = do
+      firstString <- peek varArrayValues
+      result <- peekCStringText firstString
+      pure (Just result)
+    extract _ = pure Nothing
+
+-- | Read a string spectrum (array/list) attribute and decode it into a text
+readStringSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Text]
+readStringSpectrumAttribute = readAttributeGeneral extract
+  where
+    extract a =
+      case tangoAttributeData a of
+        HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues}) -> do
+          haskellStringList <- peekCStringArrayText (dimX a) varArrayValues
+          pure (Just haskellStringList)
+        _ -> pure Nothing
+
+-- | Read a string image attribute and decode it into a text
+readStringImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Text)
+readStringImageAttribute = readAttributeGeneral extract
+  where
+    extract a =
+      case tangoAttributeData a of
+        HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues}) -> do
+          haskellStringList <- peekCStringArrayText (dimX a * dimY a) varArrayValues
+          pure $ Just $ Image haskellStringList (fromIntegral (dimX a)) (fromIntegral (dimY a))
+        _ -> pure Nothing
 
 readBoolAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Bool
 readBoolAttribute =
@@ -614,22 +648,19 @@ data AttributeInfo = AttributeInfo
 
 convertAttributeInfo :: CommonRaw.HaskellAttributeInfo -> IO AttributeInfo
 convertAttributeInfo ai = do
-  description <- peekCString (CommonRaw.attributeInfoDescription ai)
-  label <- peekCString (CommonRaw.attributeInfoLabel ai)
-  unit <- peekCString (CommonRaw.attributeInfoUnit ai)
-  standardUnit <- peekCString (CommonRaw.attributeInfoStandardUnit ai)
-  displayUnit <- peekCString (CommonRaw.attributeInfoDisplayUnit ai)
-  format <- peekCString (CommonRaw.attributeInfoFormat ai)
-  minValue <- peekCString (CommonRaw.attributeInfoMinValue ai)
-  maxValue <- peekCString (CommonRaw.attributeInfoMaxValue ai)
-  minAlarm <- peekCString (CommonRaw.attributeInfoMinAlarm ai)
-  maxAlarm <- peekCString (CommonRaw.attributeInfoMaxAlarm ai)
-  writableAttrName <- peekCString (CommonRaw.attributeInfoWritableAttrName ai)
-  enumLabelsPtrList <-
-    peekArray
-      (fromIntegral (CommonRaw.attributeInfoEnumLabelsCount ai))
-      (CommonRaw.attributeInfoEnumLabels ai)
-  enumLabelsList <- traverse peekCString enumLabelsPtrList
+  description <- peekCStringText (CommonRaw.attributeInfoDescription ai)
+  label <- peekCStringText (CommonRaw.attributeInfoLabel ai)
+  unit <- peekCStringText (CommonRaw.attributeInfoUnit ai)
+  standardUnit <- peekCStringText (CommonRaw.attributeInfoStandardUnit ai)
+  displayUnit <- peekCStringText (CommonRaw.attributeInfoDisplayUnit ai)
+  format <- peekCStringText (CommonRaw.attributeInfoFormat ai)
+  minValue <- peekCStringText (CommonRaw.attributeInfoMinValue ai)
+  maxValue <- peekCStringText (CommonRaw.attributeInfoMaxValue ai)
+  minAlarm <- peekCStringText (CommonRaw.attributeInfoMinAlarm ai)
+  maxAlarm <- peekCStringText (CommonRaw.attributeInfoMaxAlarm ai)
+  writableAttrName <- peekCStringText (CommonRaw.attributeInfoWritableAttrName ai)
+  enumLabelsList <-
+    peekCStringArrayText (CommonRaw.attributeInfoEnumLabelsCount ai) (CommonRaw.attributeInfoEnumLabels ai)
   pure $
     AttributeInfo
       (CommonRaw.attributeInfoWritable ai)
@@ -637,19 +668,19 @@ convertAttributeInfo ai = do
       (CommonRaw.attributeInfoDataType ai)
       (fromIntegral (CommonRaw.attributeInfoMaxDimX ai))
       (fromIntegral (CommonRaw.attributeInfoMaxDimY ai))
-      (pack description)
-      (pack label)
-      (pack unit)
-      (pack standardUnit)
-      (pack displayUnit)
-      (pack format)
-      (pack minValue)
-      (pack maxValue)
-      (pack minAlarm)
-      (pack maxAlarm)
-      (pack writableAttrName)
+      description
+      label
+      unit
+      standardUnit
+      displayUnit
+      format
+      minValue
+      maxValue
+      minAlarm
+      maxAlarm
+      writableAttrName
       (CommonRaw.attributeInfoDispLevel ai)
-      (pack <$> enumLabelsList)
+      enumLabelsList
 
 getConfigsForAttributes :: DeviceProxy -> [AttributeName] -> IO [AttributeInfo]
 getConfigsForAttributes deviceProxyPtr attributeNames = do

@@ -50,4 +50,5 @@ benchmark tango-read-test-device
   build-depends:
       base >=4.7 && <5
     , hs-tango
+    , text
            
