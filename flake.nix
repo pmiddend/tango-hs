@@ -8,8 +8,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
-    # tango-controls.url = "git+https://gitlab.desy.de/cfel-sc-public/tango-flake";
-    tango-controls.url = "/home/pmidden/code/tango-flake";
+    tango-controls.url = "git+https://gitlab.desy.de/cfel-sc-public/tango-flake";
   };
 
   outputs = { self, nixpkgs, flake-utils, tango-controls }:
@@ -29,9 +28,10 @@
 
           packageName = "hs-tango";
 
-          my-cpptango = pkgs.tango-cpptango.overrideAttrs (old: {
-            src = /home/pmidden/code/tango-projects/cppTango;
-          });
+          # my-cpptango = pkgs.tango-cpptango.overrideAttrs (old: {
+          #   src = /home/pmidden/code/tango-projects/cppTango;
+          # });
+          my-cpptango = pkgs.cpptango-9_4;
         in
         {
           packages.${packageName} =

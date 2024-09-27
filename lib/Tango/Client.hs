@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -7,8 +8,6 @@
 module Tango.Client
   ( withDeviceProxy,
     checkResult,
-    writeLong64Attribute,
-    writeDoubleAttribute,
     getConfigsForAttributes,
     AttributeInfo (..),
     commandInOutVoid,
@@ -56,6 +55,10 @@ module Tango.Client
     readEnumAttribute,
     readEnumSpectrumAttribute,
     readEnumImageAttribute,
+    writeLong64Attribute,
+    writeLong64SpectrumAttribute,
+    writeLong64ImageAttribute,
+    writeDoubleAttribute,
     tangoUrlFromText,
     DeviceProxyPtr,
     CommandName (CommandName),
@@ -88,7 +91,7 @@ import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, strip, unp
 import Data.Text.IO (putStrLn)
 import Data.Traversable (traverse)
 import Data.Word (Word16, Word32, Word64, Word8)
-import Foreign (free)
+import Foreign (Storable, free)
 import Foreign.C.String (CString)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (IO, print)
@@ -191,10 +194,10 @@ withDeviceProxy (TangoUrl proxyAddress) =
         liftIO $ checkResult (tango_delete_device_proxy proxyPtrPtr)
    in UnliftIO.bracket initialize deinitialize
 
-writeLong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> Int64 -> m ()
-writeLong64Attribute proxyPtr attributeName newValue = do
+writeScalarAttribute :: (UnliftIO.MonadUnliftIO m, Storable tangoType) => DeviceProxyPtr -> AttributeName -> tangoType -> HaskellTangoDataType -> (HaskellTangoVarArray tangoType -> HaskellTangoAttributeData) -> m ()
+writeScalarAttribute proxyPtr (AttributeName attributeName) newValue tangoType intract = do
   withCString (unpack attributeName) $ \attributeNameC ->
-    with (fromIntegral newValue) $ \newValuePtr -> with
+    with newValue $ \newValuePtr -> with
       ( HaskellAttributeData
           { dataFormat = HaskellScalar,
             dataQuality = HaskellValid,
@@ -203,31 +206,63 @@ writeLong64Attribute proxyPtr attributeName newValue = do
             dimX = 1,
             dimY = 1,
             timeStamp = Timeval 0 0,
-            dataType = HaskellDevLong64,
-            tangoAttributeData = HaskellAttributeDataLongArray (HaskellTangoVarArray 1 newValuePtr)
+            dataType = tangoType,
+            tangoAttributeData = intract (HaskellTangoVarArray 1 newValuePtr)
           }
       )
-      $ \newDataPtr ->
-        liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+      $ \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
 
-writeDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> Text -> Double -> m ()
-writeDoubleAttribute proxyPtr attributeName newValue = do
+writeSpectrumAttribute :: (UnliftIO.MonadUnliftIO m, Storable tangoType) => DeviceProxyPtr -> AttributeName -> [tangoType] -> HaskellTangoDataType -> (HaskellTangoVarArray tangoType -> HaskellTangoAttributeData) -> m ()
+writeSpectrumAttribute proxyPtr (AttributeName attributeName) newValues tangoType intract =
   withCString (unpack attributeName) $ \attributeNameC ->
-    with (realToFrac newValue) $ \newValuePtr -> with
+    withArray newValues \newValuesPtr -> with
       ( HaskellAttributeData
-          { dataFormat = HaskellScalar,
+          { dataFormat = HaskellSpectrum,
             dataQuality = HaskellValid,
             nbRead = 0,
             name = attributeNameC,
-            dimX = 1,
+            dimX = fromIntegral (length newValues),
             dimY = 1,
             timeStamp = Timeval 0 0,
-            dataType = HaskellDevDouble,
-            tangoAttributeData = HaskellAttributeDataDoubleArray (HaskellTangoVarArray 1 newValuePtr)
+            dataType = tangoType,
+            tangoAttributeData = intract (HaskellTangoVarArray (fromIntegral (length newValues)) newValuesPtr)
           }
       )
-      $ \newDataPtr ->
-        liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+      $ \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+
+writeImageAttribute :: (UnliftIO.MonadUnliftIO m, Storable tangoType) => DeviceProxyPtr -> AttributeName -> Image tangoType -> HaskellTangoDataType -> (HaskellTangoVarArray tangoType -> HaskellTangoAttributeData) -> m ()
+writeImageAttribute proxyPtr (AttributeName attributeName) newImage tangoType intract =
+  withCString (unpack attributeName) $ \attributeNameC ->
+    withArray (imageContent newImage) \newValuesPtr -> with
+      ( HaskellAttributeData
+          { dataFormat = HaskellImage,
+            dataQuality = HaskellValid,
+            nbRead = 0,
+            name = attributeNameC,
+            dimX = fromIntegral (imageDimX newImage),
+            dimY = fromIntegral (imageDimY newImage),
+            timeStamp = Timeval 0 0,
+            dataType = tangoType,
+            tangoAttributeData = intract (HaskellTangoVarArray (fromIntegral (length (imageContent newImage))) newValuesPtr)
+          }
+      )
+      $ \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+
+writeLong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Int64 -> m ()
+writeLong64Attribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevLong64 HaskellAttributeDataLongArray
+
+writeLong64SpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Int64] -> m ()
+writeLong64SpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevLong64 HaskellAttributeDataLongArray
+
+writeLong64ImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Int64 -> m ()
+writeLong64ImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevLong64 HaskellAttributeDataLongArray
+
+writeDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Double -> m ()
+writeDoubleAttribute proxyPtr attributeName newValue = do
+  writeScalarAttribute proxyPtr attributeName (realToFrac newValue) HaskellDevDouble HaskellAttributeDataDoubleArray
 
 -- | Newtype wrapper to wrap an attribute name
 newtype AttributeName = AttributeName Text
@@ -252,7 +287,7 @@ data Image a = Image
     imageDimX :: Int,
     imageDimY :: Int
   }
-  deriving (Show)
+  deriving (Show, Functor)
 
 -- | Read a string attribute and decode it into a text
 readStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Text

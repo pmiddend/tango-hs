@@ -35,3 +35,5 @@ main =
       putStrLn "string image contents follow:"
       mapM_ TIO.putStrLn (imageContent stringImage)
       putStrLn "string image end"
+
+      writeLong64Attribute proxy (AttributeName "long64_scalar") 1337
