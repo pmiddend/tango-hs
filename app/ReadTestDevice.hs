@@ -16,11 +16,16 @@ main =
       booleanResult <- readBoolAttribute proxy (AttributeName "boolean_scalar")
       putStrLn $ "boolean_scalar is " <> show booleanResult
 
-      booleanSpectrumResult <- readBoolSpectrumAttribute proxy (AttributeName "boolean_spectrum")
-      putStrLn $ "boolean_spectrum is " <> show booleanSpectrumResult
+      booleanResultBetter <- readBoolAttribute proxy (AttributeName "boolean_scalar")
+      putStrLn $ "boolean_scalar better is " <> show booleanResultBetter
 
-      booleanImageResult <- readBoolImageAttribute proxy (AttributeName "boolean_image")
-      putStrLn $ "boolean_image is " <> show booleanImageResult
+      -- booleanSpectrumResult <- readBoolSpectrumAttribute proxy (AttributeName "boolean_spectrum")
+      -- putStrLn $ "boolean_spectrum is " <> show booleanSpectrumResult
+      booleanSpectrumResultBetter <- readBoolSpectrumAttribute proxy (AttributeName "boolean_spectrum")
+      putStrLn $ "boolean_spectrum is " <> show booleanSpectrumResultBetter
+
+      -- booleanImageResult <- readBoolImageAttribute proxy (AttributeName "boolean_image")
+      -- putStrLn $ "boolean_image is " <> show booleanImageResult
 
       enumResult <- readShortAttribute proxy (AttributeName "enum_scalar")
       putStrLn $ "enum_scalar is " <> show enumResult
@@ -28,12 +33,12 @@ main =
       attributeList <- getConfigsForAttributes proxy [AttributeName "enum_scalar_ro"]
       putStrLn $ "attribute description for \"enum_scalar_ro\": " <> show attributeList
 
-      enumResult' <- readEnumAttribute proxy (AttributeName "enum_scalar")
-      putStrLn $ "enum_scalar (as Haskell enum) is " <> show (enumResult' :: ScalarEnum)
+      (TangoValue enumResultRead' enumResultWrite') <- readEnumAttribute proxy (AttributeName "enum_scalar")
+      putStrLn $ "enum_scalar (as Haskell enum) is " <> show (enumResultRead' :: ScalarEnum)
 
-      stringImage <- readStringImageAttribute proxy (AttributeName "string_image_ro")
-      putStrLn "string image contents follow:"
-      mapM_ TIO.putStrLn (imageContent stringImage)
-      putStrLn "string image end"
+      -- stringImage <- readStringImageAttribute proxy (AttributeName "string_image_ro")
+      -- putStrLn "string image contents follow:"
+      -- mapM_ TIO.putStrLn (imageContent stringImage)
+      -- putStrLn "string image end"
 
       writeLong64Attribute proxy (AttributeName "long64_scalar") 1337

@@ -4,6 +4,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 module Tango.Client
   ( withDeviceProxy,
@@ -12,6 +13,7 @@ module Tango.Client
     AttributeInfo (..),
     commandInOutVoid,
     HaskellDevFailed (HaskellDevFailed),
+    TangoValue (TangoValue),
     Image (Image, imageContent, imageDimX, imageDimY),
     devFailedDesc,
     throwTangoException,
@@ -69,7 +71,7 @@ module Tango.Client
   )
 where
 
-import Control.Applicative (pure)
+import Control.Applicative (Applicative, pure, (<*>))
 import Control.Applicative.Free (Ap, liftAp, runAp, runAp_)
 import Control.Exception (Exception, bracket, throw)
 import Control.Monad (fail, forM_, mapM_, void, when, (>>=))
@@ -80,11 +82,12 @@ import Data.Char (Char)
 import Data.Either (Either (Left, Right))
 import Data.Eq (Eq ((==)), (/=))
 import Data.Foldable (any)
-import Data.Function (($), (.))
+import Data.Function (id, ($), (.))
 import Data.Functor (Functor, (<$>))
 import Data.Int (Int, Int16, Int32, Int64)
-import Data.List (drop, length, singleton)
+import Data.List (drop, length, singleton, splitAt)
 import Data.Maybe (Maybe (Just, Nothing), listToMaybe, maybe)
+import Data.Ord (max)
 import Data.Semigroup ((<>))
 import Data.String (String, unlines)
 import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, strip, unpack)
@@ -130,8 +133,8 @@ import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
-import UnliftIO.Foreign (CDouble, CLong, FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
-import Prelude (Double, Enum (fromEnum, toEnum), Float, Integral, Num ((*)), error, fromIntegral, realToFrac, undefined)
+import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
+import Prelude (Double, Enum (fromEnum, toEnum), Float, Integral, Num ((*)), div, error, fromIntegral, realToFrac, undefined)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
@@ -264,7 +267,7 @@ writeDoubleAttribute proxyPtr attributeName newValue = do
   writeScalarAttribute proxyPtr attributeName (realToFrac newValue) HaskellDevDouble HaskellAttributeDataDoubleArray
 
 -- | Newtype wrapper to wrap an attribute name
-newtype AttributeName = AttributeName Text
+newtype AttributeName = AttributeName Text deriving (Show)
 
 readAttributeGeneral :: (MonadIO m) => (HaskellAttributeData -> IO (Maybe a)) -> DeviceProxy -> AttributeName -> m a
 readAttributeGeneral extractValue proxyPtr (AttributeName attributeNameHaskell) =
@@ -278,8 +281,46 @@ readAttributeGeneral extractValue proxyPtr (AttributeName attributeNameHaskell) 
         Just v ->
           pure v
 
-readAttributeSimple :: (MonadIO m) => (HaskellTangoAttributeData -> IO (Maybe a)) -> DeviceProxy -> AttributeName -> m a
-readAttributeSimple extractValue = readAttributeGeneral (extractValue . tangoAttributeData)
+data AtLeastTwo a = AtLeastTwo a a [a]
+
+readAttributeSimple ::
+  (MonadIO m, Storable a, Show a) =>
+  (HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray a)) ->
+  (HaskellAttributeData -> AtLeastTwo a -> m b) ->
+  DeviceProxy ->
+  AttributeName ->
+  m b
+readAttributeSimple extractValue convertValue proxyPtr attributeName = do
+  (attributeData, tangoArray) <- readAttributeGeneral (\d -> pure ((d,) <$> extractValue (tangoAttributeData d))) proxyPtr attributeName
+  arrayElements <- peekArray (fromIntegral (varArrayLength tangoArray)) (varArrayValues tangoArray)
+  case arrayElements of
+    (first : second : rest) -> convertValue attributeData (AtLeastTwo first second rest)
+    _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a value array of length at least two, but got " <> show arrayElements
+
+convertGenericScalar :: (Applicative f) => (a -> b) -> HaskellAttributeData -> AtLeastTwo a -> f (TangoValue b)
+convertGenericScalar f _ (AtLeastTwo first second _) = pure (TangoValue (f first) (f second))
+
+convertGenericSpectrum :: (Applicative f) => (a -> b) -> HaskellAttributeData -> AtLeastTwo a -> f (TangoValue [b])
+convertGenericSpectrum f (HaskellAttributeData {dimX}) (AtLeastTwo first second remainder) =
+  let wholeList = f <$> (first : second : remainder)
+      (readValue, writeValue) = splitAt (fromIntegral dimX) wholeList
+   in pure (TangoValue readValue writeValue)
+
+convertGenericImage :: (Applicative f) => (a1 -> a2) -> HaskellAttributeData -> AtLeastTwo a1 -> f (TangoValue (Image a2))
+convertGenericImage f (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first second remainder) =
+  let wholeList = f <$> (first : second : remainder)
+      (readValue, writeValue) = splitAt (fromIntegral (dimX * dimY)) wholeList
+   in pure
+        ( TangoValue
+            (Image readValue (fromIntegral dimX) (fromIntegral dimY))
+            (Image writeValue (fromIntegral dimX) (fromIntegral dimY))
+        )
+
+data TangoValue a = TangoValue
+  { tangoValueRead :: a,
+    tangoValueWrite :: a
+  }
+  deriving (Show)
 
 data Image a = Image
   { imageContent :: ![a],
@@ -288,360 +329,183 @@ data Image a = Image
   }
   deriving (Show, Functor)
 
+extractBool :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CBool)
+extractBool (HaskellAttributeDataBoolArray a) = Just a
+extractBool _ = Nothing
+
+readBoolAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Bool)
+readBoolAttribute = readAttributeSimple extractBool (convertGenericScalar (/= 0))
+
+readBoolSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Bool])
+readBoolSpectrumAttribute = readAttributeSimple extractBool (convertGenericSpectrum (/= 0))
+
+readBoolImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Bool))
+readBoolImageAttribute = readAttributeSimple extractBool (convertGenericImage (/= 0))
+
 -- | Read a string attribute and decode it into a text
-readStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Text
-readStringAttribute = readAttributeSimple extract
+readStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Text)
+readStringAttribute = readAttributeSimple extract convert
   where
-    extract (HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues})) = do
-      firstString <- peek varArrayValues
-      result <- peekCStringText firstString
-      pure (Just result)
-    extract _ = pure Nothing
+    extract (HaskellAttributeDataStringArray a) = Just a
+    extract _ = Nothing
+    convert _ (AtLeastTwo read write []) = TangoValue <$> peekCStringText read <*> peekCStringText write
+    convert _ _ = error "expected a read and a write value for attribute, got more elements"
 
 -- | Read a string spectrum (array/list) attribute and decode it into a text
-readStringSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Text]
-readStringSpectrumAttribute = readAttributeGeneral extract
+readStringSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Text])
+readStringSpectrumAttribute = readAttributeSimple extract convert
   where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues}) -> do
-          haskellStringList <- peekCStringArrayText (dimX a) varArrayValues
-          pure (Just haskellStringList)
-        _ -> pure Nothing
+    extract (HaskellAttributeDataStringArray a) = Just a
+    extract _ = Nothing
+    convert (HaskellAttributeData {dimX}) (AtLeastTwo first second remainder) = do
+      wholeList <- traverse peekCStringText (first : second : remainder)
+      let (readValue, writeValue) = splitAt (fromIntegral dimX) wholeList
+      pure (TangoValue readValue writeValue)
 
 -- | Read a string image attribute and decode it into a text
-readStringImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Text)
-readStringImageAttribute = readAttributeGeneral extract
+readStringImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Text))
+readStringImageAttribute = readAttributeSimple extract convert
   where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataStringArray (HaskellTangoVarArray {varArrayValues}) -> do
-          haskellStringList <- peekCStringArrayText (dimX a * dimY a) varArrayValues
-          pure $ Just $ Image haskellStringList (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+    extract (HaskellAttributeDataStringArray a) = Just a
+    extract _ = Nothing
+    convert (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first second remainder) = do
+      wholeList <- traverse peekCStringText (first : second : remainder)
+      let (readValue, writeValue) = splitAt (fromIntegral (dimX * dimY)) wholeList
+      pure
+        ( TangoValue
+            (Image readValue (fromIntegral dimX) (fromIntegral dimY))
+            (Image writeValue (fromIntegral dimX) (fromIntegral dimY))
+        )
 
-readBoolAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Bool
-readBoolAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataBoolArray (HaskellTangoVarArray {varArrayValues})) = Just . (/= 0) <$> peek varArrayValues
-    extract _ = pure Nothing
+extractShort :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CShort)
+extractShort (HaskellAttributeDataShortArray a) = Just a
+extractShort _ = Nothing
 
-readBoolSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Bool]
-readBoolSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataBoolArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ (/= 0) <$> arrayResult
-        _ -> pure Nothing
+readShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Int16)
+readShortAttribute = readAttributeSimple extractShort (convertGenericScalar fromIntegral)
 
-readBoolImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Bool)
-readBoolImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataBoolArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image ((/= 0) <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readShortSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Int16])
+readShortSpectrumAttribute = readAttributeSimple extractShort (convertGenericSpectrum fromIntegral)
 
-readShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Int16
-readShortAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues})) = Just . fromIntegral <$> peek varArrayValues
-    extract _ = pure Nothing
+readShortImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Int16))
+readShortImageAttribute = readAttributeSimple extractShort (convertGenericImage fromIntegral)
 
-readShortSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Int16]
-readShortSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ fromIntegral <$> arrayResult
-        _ -> pure Nothing
+extractUShort :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CUShort)
+extractUShort (HaskellAttributeDataUShortArray a) = Just a
+extractUShort _ = Nothing
 
-readShortImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Int16)
-readShortImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readUShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Word16)
+readUShortAttribute = readAttributeSimple extractUShort (convertGenericScalar fromIntegral)
 
-readUShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Word16
-readUShortAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataUShortArray (HaskellTangoVarArray {varArrayValues})) = Just . fromIntegral <$> peek varArrayValues
-    extract _ = pure Nothing
+readUShortSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Word16])
+readUShortSpectrumAttribute = readAttributeSimple extractUShort (convertGenericSpectrum fromIntegral)
 
-readUShortSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Word16]
-readUShortSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataUShortArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ fromIntegral <$> arrayResult
-        _ -> pure Nothing
+readUShortImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Word16))
+readUShortImageAttribute = readAttributeSimple extractUShort (convertGenericImage fromIntegral)
 
-readUShortImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Word16)
-readUShortImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataUShortArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+extractLong :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CLong)
+extractLong (HaskellAttributeDataLongArray a) = Just a
+extractLong _ = Nothing
 
-readLongAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Int64
-readLongAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataLongArray (HaskellTangoVarArray {varArrayValues})) = Just . fromIntegral <$> peek varArrayValues
-    extract _ = pure Nothing
+readLongAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Int64)
+readLongAttribute = readAttributeSimple extractLong (convertGenericScalar fromIntegral)
 
-readLongSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Int64]
-readLongSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataLongArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ fromIntegral <$> arrayResult
-        _ -> pure Nothing
+readLongSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Int64])
+readLongSpectrumAttribute = readAttributeSimple extractLong (convertGenericSpectrum fromIntegral)
 
-readLongImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Int64)
-readLongImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataLongArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readLongImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Int64))
+readLongImageAttribute = readAttributeSimple extractLong (convertGenericImage fromIntegral)
 
-readULongAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Word64
-readULongAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataULongArray (HaskellTangoVarArray {varArrayValues})) = Just . fromIntegral <$> peek varArrayValues
-    extract _ = pure Nothing
+extractULong :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CULong)
+extractULong (HaskellAttributeDataULongArray a) = Just a
+extractULong _ = Nothing
 
-readULongSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Word64]
-readULongSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataULongArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ fromIntegral <$> arrayResult
-        _ -> pure Nothing
+readULongAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Word64)
+readULongAttribute = readAttributeSimple extractULong (convertGenericScalar fromIntegral)
 
-readULongImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Word64)
-readULongImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataULongArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readULongSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Word64])
+readULongSpectrumAttribute = readAttributeSimple extractULong (convertGenericSpectrum fromIntegral)
 
-readLong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Int64
-readLong64Attribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataLong64Array (HaskellTangoVarArray {varArrayValues})) = Just . fromIntegral <$> peek varArrayValues
-    extract _ = pure Nothing
+readULongImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Word64))
+readULongImageAttribute = readAttributeSimple extractULong (convertGenericImage fromIntegral)
 
-readLong64SpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Int64]
-readLong64SpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataLong64Array (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ fromIntegral <$> arrayResult
-        _ -> pure Nothing
+extractLong64 :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CLong)
+extractLong64 (HaskellAttributeDataLong64Array a) = Just a
+extractLong64 _ = Nothing
 
-readLong64ImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Int64)
-readLong64ImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataLong64Array (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readLong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Int64)
+readLong64Attribute = readAttributeSimple extractLong64 (convertGenericScalar fromIntegral)
 
-readULong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Word64
-readULong64Attribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataULong64Array (HaskellTangoVarArray {varArrayValues})) = Just . fromIntegral <$> peek varArrayValues
-    extract _ = pure Nothing
+readLong64SpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Int64])
+readLong64SpectrumAttribute = readAttributeSimple extractLong64 (convertGenericSpectrum fromIntegral)
 
-readULong64SpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Word64]
-readULong64SpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataULong64Array (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ fromIntegral <$> arrayResult
-        _ -> pure Nothing
+readLong64ImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Int64))
+readLong64ImageAttribute = readAttributeSimple extractLong64 (convertGenericImage fromIntegral)
 
-readULong64ImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Word64)
-readULong64ImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataULong64Array (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+extractULong64 :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CULong)
+extractULong64 (HaskellAttributeDataULong64Array a) = Just a
+extractULong64 _ = Nothing
 
-readFloatAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Double
-readFloatAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataFloatArray (HaskellTangoVarArray {varArrayValues})) = Just . realToFrac <$> peek varArrayValues
-    extract _ = pure Nothing
+readULong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Word64)
+readULong64Attribute = readAttributeSimple extractULong64 (convertGenericScalar fromIntegral)
 
-readFloatSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Double]
-readFloatSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataFloatArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ realToFrac <$> arrayResult
-        _ -> pure Nothing
+readULong64SpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Word64])
+readULong64SpectrumAttribute = readAttributeSimple extractULong64 (convertGenericSpectrum fromIntegral)
 
-readFloatImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Double)
-readFloatImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataFloatArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (realToFrac <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readULong64ImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Word64))
+readULong64ImageAttribute = readAttributeSimple extractULong64 (convertGenericImage fromIntegral)
 
-readDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m Double
-readDoubleAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataDoubleArray (HaskellTangoVarArray {varArrayValues})) = Just . realToFrac <$> peek varArrayValues
-    extract _ = pure Nothing
+extractFloat :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CFloat)
+extractFloat (HaskellAttributeDataFloatArray a) = Just a
+extractFloat _ = Nothing
 
-readDoubleSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [Double]
-readDoubleSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataDoubleArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just $ realToFrac <$> arrayResult
-        _ -> pure Nothing
+readFloatAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Double)
+readFloatAttribute = readAttributeSimple extractFloat (convertGenericScalar realToFrac)
 
-readDoubleImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image Double)
-readDoubleImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataDoubleArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (realToFrac <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readFloatSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Double])
+readFloatSpectrumAttribute = readAttributeSimple extractFloat (convertGenericSpectrum realToFrac)
 
--- | Read a state attribute
-readStateAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m HaskellTangoDevState
-readStateAttribute = readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataStateArray (HaskellTangoVarArray {varArrayValues})) = do
-      firstValue <- peek varArrayValues
-      pure (Just firstValue)
-    extract _ = pure Nothing
+readFloatImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Double))
+readFloatImageAttribute = readAttributeSimple extractFloat (convertGenericImage realToFrac)
 
-readStateSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m [HaskellTangoDevState]
-readStateSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataStateArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just arrayResult
-        _ -> pure Nothing
+extractDouble :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CDouble)
+extractDouble (HaskellAttributeDataDoubleArray a) = Just a
+extractDouble _ = Nothing
 
-readStateImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (Image HaskellTangoDevState)
-readStateImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataStateArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image arrayResult (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+readDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Double)
+readDoubleAttribute = readAttributeSimple extractDouble (convertGenericScalar realToFrac)
 
-readEnumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m t
-readEnumAttribute =
-  readAttributeSimple extract
-  where
-    extract (HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues})) = do
-      v <- peek varArrayValues
-      pure (Just (toEnum (fromIntegral v)))
-    extract _ = pure Nothing
+readDoubleSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Double])
+readDoubleSpectrumAttribute = readAttributeSimple extractDouble (convertGenericSpectrum realToFrac)
 
-readEnumSpectrumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m [t]
-readEnumSpectrumAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a)) varArrayValues
-          pure $ Just (toEnum . fromIntegral <$> arrayResult)
-        _ -> pure Nothing
+readDoubleImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Double))
+readDoubleImageAttribute = readAttributeSimple extractDouble (convertGenericImage realToFrac)
 
-readEnumImageAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (Image t)
-readEnumImageAttribute =
-  readAttributeGeneral extract
-  where
-    extract a =
-      case tangoAttributeData a of
-        HaskellAttributeDataShortArray (HaskellTangoVarArray {varArrayValues}) -> do
-          arrayResult <- peekArray (fromIntegral (dimX a * dimY a)) varArrayValues
-          pure $ Just $ Image (toEnum . fromIntegral <$> arrayResult) (fromIntegral (dimX a)) (fromIntegral (dimY a))
-        _ -> pure Nothing
+extractState :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray HaskellTangoDevState)
+extractState (HaskellAttributeDataStateArray a) = Just a
+extractState _ = Nothing
+
+readStateAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue HaskellTangoDevState)
+readStateAttribute = readAttributeSimple extractState (convertGenericScalar id)
+
+readStateSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [HaskellTangoDevState])
+readStateSpectrumAttribute = readAttributeSimple extractState (convertGenericSpectrum id)
+
+readStateImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image HaskellTangoDevState))
+readStateImageAttribute = readAttributeSimple extractState (convertGenericImage id)
+
+extractEnum :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CShort)
+extractEnum (HaskellAttributeDataShortArray a) = Just a
+extractEnum _ = Nothing
+
+readEnumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (TangoValue t)
+readEnumAttribute = readAttributeSimple extractEnum (convertGenericScalar (toEnum . fromIntegral))
+
+readEnumSpectrumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (TangoValue [t])
+readEnumSpectrumAttribute = readAttributeSimple extractEnum (convertGenericSpectrum (toEnum . fromIntegral))
+
+readEnumImageAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (TangoValue (Image t))
+readEnumImageAttribute = readAttributeSimple extractEnum (convertGenericImage (toEnum . fromIntegral))
 
 newtype CommandName = CommandName Text
 
