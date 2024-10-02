@@ -282,9 +282,9 @@ readAttributeSimple :: (MonadIO m) => (HaskellTangoAttributeData -> IO (Maybe a)
 readAttributeSimple extractValue = readAttributeGeneral (extractValue . tangoAttributeData)
 
 data Image a = Image
-  { imageContent :: [a],
-    imageDimX :: Int,
-    imageDimY :: Int
+  { imageContent :: ![a],
+    imageDimX :: !Int,
+    imageDimY :: !Int
   }
   deriving (Show, Functor)
 
