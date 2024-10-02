@@ -126,7 +126,6 @@ import Tango.Raw.Common
     tango_throw_exception,
     tango_write_attribute,
   )
-import qualified Tango.Raw.Common as CommonRaw
 import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
 import qualified UnliftIO
@@ -681,28 +680,28 @@ data AttributeInfo = AttributeInfo
   }
   deriving (Show)
 
-convertAttributeInfo :: CommonRaw.HaskellAttributeInfo -> IO AttributeInfo
+convertAttributeInfo :: RawCommon.HaskellAttributeInfo -> IO AttributeInfo
 convertAttributeInfo ai = do
-  description <- peekCStringText (CommonRaw.attributeInfoDescription ai)
-  label <- peekCStringText (CommonRaw.attributeInfoLabel ai)
-  unit <- peekCStringText (CommonRaw.attributeInfoUnit ai)
-  standardUnit <- peekCStringText (CommonRaw.attributeInfoStandardUnit ai)
-  displayUnit <- peekCStringText (CommonRaw.attributeInfoDisplayUnit ai)
-  format <- peekCStringText (CommonRaw.attributeInfoFormat ai)
-  minValue <- peekCStringText (CommonRaw.attributeInfoMinValue ai)
-  maxValue <- peekCStringText (CommonRaw.attributeInfoMaxValue ai)
-  minAlarm <- peekCStringText (CommonRaw.attributeInfoMinAlarm ai)
-  maxAlarm <- peekCStringText (CommonRaw.attributeInfoMaxAlarm ai)
-  writableAttrName <- peekCStringText (CommonRaw.attributeInfoWritableAttrName ai)
+  description <- peekCStringText (RawCommon.attributeInfoDescription ai)
+  label <- peekCStringText (RawCommon.attributeInfoLabel ai)
+  unit <- peekCStringText (RawCommon.attributeInfoUnit ai)
+  standardUnit <- peekCStringText (RawCommon.attributeInfoStandardUnit ai)
+  displayUnit <- peekCStringText (RawCommon.attributeInfoDisplayUnit ai)
+  format <- peekCStringText (RawCommon.attributeInfoFormat ai)
+  minValue <- peekCStringText (RawCommon.attributeInfoMinValue ai)
+  maxValue <- peekCStringText (RawCommon.attributeInfoMaxValue ai)
+  minAlarm <- peekCStringText (RawCommon.attributeInfoMinAlarm ai)
+  maxAlarm <- peekCStringText (RawCommon.attributeInfoMaxAlarm ai)
+  writableAttrName <- peekCStringText (RawCommon.attributeInfoWritableAttrName ai)
   enumLabelsList <-
-    peekCStringArrayText (CommonRaw.attributeInfoEnumLabelsCount ai) (CommonRaw.attributeInfoEnumLabels ai)
+    peekCStringArrayText (RawCommon.attributeInfoEnumLabelsCount ai) (RawCommon.attributeInfoEnumLabels ai)
   pure $
     AttributeInfo
-      (CommonRaw.attributeInfoWritable ai)
-      (CommonRaw.attributeInfoDataFormat ai)
-      (CommonRaw.attributeInfoDataType ai)
-      (fromIntegral (CommonRaw.attributeInfoMaxDimX ai))
-      (fromIntegral (CommonRaw.attributeInfoMaxDimY ai))
+      (RawCommon.attributeInfoWritable ai)
+      (RawCommon.attributeInfoDataFormat ai)
+      (RawCommon.attributeInfoDataType ai)
+      (fromIntegral (RawCommon.attributeInfoMaxDimX ai))
+      (fromIntegral (RawCommon.attributeInfoMaxDimY ai))
       description
       label
       unit
@@ -714,7 +713,7 @@ convertAttributeInfo ai = do
       minAlarm
       maxAlarm
       writableAttrName
-      (CommonRaw.attributeInfoDispLevel ai)
+      (RawCommon.attributeInfoDispLevel ai)
       enumLabelsList
 
 getConfigsForAttributes :: DeviceProxy -> [AttributeName] -> IO [AttributeInfo]
