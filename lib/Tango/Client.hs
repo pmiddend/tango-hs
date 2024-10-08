@@ -21,9 +21,6 @@ module Tango.Client
     devFailedOrigin,
     devFailedSeverity,
     newDeviceProxy,
-    readStateAttribute,
-    readStateSpectrumAttribute,
-    readStateImageAttribute,
     readBoolAttribute,
     readBoolSpectrumAttribute,
     readBoolImageAttribute,
@@ -54,13 +51,48 @@ module Tango.Client
     readDoubleAttribute,
     readDoubleSpectrumAttribute,
     readDoubleImageAttribute,
+    readStateAttribute,
+    readStateSpectrumAttribute,
+    readStateImageAttribute,
     readEnumAttribute,
     readEnumSpectrumAttribute,
     readEnumImageAttribute,
+    writeBoolAttribute,
+    writeBoolSpectrumAttribute,
+    writeBoolImageAttribute,
+    writeShortAttribute,
+    writeShortSpectrumAttribute,
+    writeShortImageAttribute,
+    writeUShortAttribute,
+    writeUShortSpectrumAttribute,
+    writeUShortImageAttribute,
+    writeStringAttribute,
+    writeStringSpectrumAttribute,
+    writeStringImageAttribute,
+    writeLongAttribute,
+    writeLongSpectrumAttribute,
+    writeLongImageAttribute,
+    writeULongAttribute,
+    writeULongSpectrumAttribute,
+    writeULongImageAttribute,
     writeLong64Attribute,
     writeLong64SpectrumAttribute,
     writeLong64ImageAttribute,
+    writeULong64Attribute,
+    writeULong64SpectrumAttribute,
+    writeULong64ImageAttribute,
+    writeFloatAttribute,
+    writeFloatSpectrumAttribute,
+    writeFloatImageAttribute,
     writeDoubleAttribute,
+    writeDoubleSpectrumAttribute,
+    writeDoubleImageAttribute,
+    writeStateAttribute,
+    writeStateSpectrumAttribute,
+    writeStateImageAttribute,
+    writeEnumAttribute,
+    writeEnumSpectrumAttribute,
+    writeEnumImageAttribute,
     tangoUrlFromText,
     DeviceProxyPtr,
     CommandName (CommandName),
@@ -94,7 +126,7 @@ import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, strip, unp
 import Data.Text.IO (putStrLn)
 import Data.Traversable (traverse)
 import Data.Word (Word16, Word32, Word64, Word8)
-import Foreign (Storable, free)
+import Foreign (Storable)
 import Foreign.C.String (CString)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (IO, print)
@@ -133,7 +165,7 @@ import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
-import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castPtr, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
+import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castPtr, free, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
 import Prelude (Double, Enum (fromEnum, toEnum), Float, Integral, Num ((*)), div, error, fromIntegral, realToFrac, undefined)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
@@ -250,21 +282,195 @@ writeImageAttribute proxyPtr (AttributeName attributeName) newImage tangoType in
       )
       $ \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
 
+writeBoolAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Bool -> m ()
+writeBoolAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (if newValue then 1 else 0) HaskellDevBoolean HaskellAttributeDataBoolArray
+
+writeBoolSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Bool] -> m ()
+writeBoolSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName ((\x -> if x then 1 else 0) <$> newValues) HaskellDevBoolean HaskellAttributeDataBoolArray
+
+writeBoolImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Bool -> m ()
+writeBoolImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName ((\x -> if x then 1 else 0) <$> newImage) HaskellDevBoolean HaskellAttributeDataBoolArray
+
+writeShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Int16 -> m ()
+writeShortAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevShort HaskellAttributeDataShortArray
+
+writeShortSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Int16] -> m ()
+writeShortSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevShort HaskellAttributeDataShortArray
+
+writeShortImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Int16 -> m ()
+writeShortImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevShort HaskellAttributeDataShortArray
+
+writeUShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Word16 -> m ()
+writeUShortAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevUShort HaskellAttributeDataUShortArray
+
+writeUShortSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Word16] -> m ()
+writeUShortSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevUShort HaskellAttributeDataUShortArray
+
+writeUShortImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Word16 -> m ()
+writeUShortImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevUShort HaskellAttributeDataUShortArray
+
+writeLongAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Int64 -> m ()
+writeLongAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevLong HaskellAttributeDataLongArray
+
+writeLongSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Int64] -> m ()
+writeLongSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevLong HaskellAttributeDataLongArray
+
+writeLongImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Int64 -> m ()
+writeLongImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevLong HaskellAttributeDataLongArray
+
+writeULongAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Word64 -> m ()
+writeULongAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevULong HaskellAttributeDataULongArray
+
+writeULongSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Word64] -> m ()
+writeULongSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevULong HaskellAttributeDataULongArray
+
+writeULongImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Word64 -> m ()
+writeULongImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevULong HaskellAttributeDataULongArray
+
+writeULong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Word64 -> m ()
+writeULong64Attribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevULong64 HaskellAttributeDataULong64Array
+
+writeULong64SpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Word64] -> m ()
+writeULong64SpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevULong64 HaskellAttributeDataULong64Array
+
+writeULong64ImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Word64 -> m ()
+writeULong64ImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevULong64 HaskellAttributeDataULong64Array
+
+writeFloatAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Double -> m ()
+writeFloatAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (realToFrac newValue) HaskellDevFloat HaskellAttributeDataFloatArray
+
+writeFloatSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Double] -> m ()
+writeFloatSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (realToFrac <$> newValues) HaskellDevFloat HaskellAttributeDataFloatArray
+
+writeFloatImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Double -> m ()
+writeFloatImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (realToFrac <$> newImage) HaskellDevFloat HaskellAttributeDataFloatArray
+
+writeDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Double -> m ()
+writeDoubleAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (realToFrac newValue) HaskellDevDouble HaskellAttributeDataDoubleArray
+
+writeDoubleSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Double] -> m ()
+writeDoubleSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (realToFrac <$> newValues) HaskellDevDouble HaskellAttributeDataDoubleArray
+
+writeDoubleImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Double -> m ()
+writeDoubleImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (realToFrac <$> newImage) HaskellDevDouble HaskellAttributeDataDoubleArray
+
+writeStateAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> HaskellTangoDevState -> m ()
+writeStateAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName newValue HaskellDevState HaskellAttributeDataStateArray
+
+writeStateSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [HaskellTangoDevState] -> m ()
+writeStateSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName newValues HaskellDevState HaskellAttributeDataStateArray
+
+writeStateImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image HaskellTangoDevState -> m ()
+writeStateImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName newImage HaskellDevState HaskellAttributeDataStateArray
+
+writeEnumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxyPtr -> AttributeName -> t -> m ()
+writeEnumAttribute proxyPtr attributeName newValue =
+  writeScalarAttribute proxyPtr attributeName (fromIntegral (fromEnum newValue)) HaskellDevEnum HaskellAttributeDataShortArray
+
+writeEnumSpectrumAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxyPtr -> AttributeName -> [t] -> m ()
+writeEnumSpectrumAttribute proxyPtr attributeName newValues =
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral . fromEnum <$> newValues) HaskellDevEnum HaskellAttributeDataShortArray
+
+writeEnumImageAttribute :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxyPtr -> AttributeName -> Image t -> m ()
+writeEnumImageAttribute proxyPtr attributeName newImage =
+  writeImageAttribute proxyPtr attributeName (fromIntegral . fromEnum <$> newImage) HaskellDevEnum HaskellAttributeDataShortArray
+
+writeStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Text -> m ()
+writeStringAttribute proxyPtr (AttributeName attributeName) newValue =
+  withCString (unpack attributeName) $ \attributeNameC -> do
+    withCString (unpack newValue) \newValuePtr ->
+      with newValuePtr \newValuePtrPtr ->
+        with
+          ( HaskellAttributeData
+              { dataFormat = HaskellScalar,
+                dataQuality = HaskellValid,
+                nbRead = 0,
+                name = attributeNameC,
+                dimX = 1,
+                dimY = 1,
+                timeStamp = Timeval 0 0,
+                dataType = HaskellDevString,
+                tangoAttributeData = HaskellAttributeDataStringArray (HaskellTangoVarArray 1 newValuePtrPtr)
+              }
+          )
+          (liftIO . void . tango_write_attribute proxyPtr)
+
+writeStringSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Text] -> m ()
+writeStringSpectrumAttribute proxyPtr (AttributeName attributeName) newValues =
+  withCString (unpack attributeName) $ \attributeNameC ->
+    UnliftIO.bracket (traverse (newCString . unpack) newValues) (traverse free) \stringPointerList ->
+      withArray stringPointerList \stringPointerPtr -> with
+        ( HaskellAttributeData
+            { dataFormat = HaskellSpectrum,
+              dataQuality = HaskellValid,
+              nbRead = 0,
+              name = attributeNameC,
+              dimX = fromIntegral (length newValues),
+              dimY = 1,
+              timeStamp = Timeval 0 0,
+              dataType = HaskellDevString,
+              tangoAttributeData = HaskellAttributeDataStringArray (HaskellTangoVarArray (fromIntegral (length newValues)) stringPointerPtr)
+            }
+        )
+        $ \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+
+writeStringImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Text -> m ()
+writeStringImageAttribute proxyPtr (AttributeName attributeName) (Image newImage imageX imageY) =
+  withCString (unpack attributeName) $ \attributeNameC ->
+    UnliftIO.bracket (traverse (newCString . unpack) newImage) (traverse free) \stringPointerList ->
+      withArray stringPointerList \stringPointerPtr -> with
+        ( HaskellAttributeData
+            { dataFormat = HaskellSpectrum,
+              dataQuality = HaskellValid,
+              nbRead = 0,
+              name = attributeNameC,
+              dimX = fromIntegral imageX,
+              dimY = fromIntegral imageY,
+              timeStamp = Timeval 0 0,
+              dataType = HaskellDevString,
+              tangoAttributeData = HaskellAttributeDataStringArray (HaskellTangoVarArray (fromIntegral (imageX * imageY)) stringPointerPtr)
+            }
+        )
+        $ \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+
 writeLong64Attribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Int64 -> m ()
 writeLong64Attribute proxyPtr attributeName newValue =
-  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevLong64 HaskellAttributeDataLongArray
+  writeScalarAttribute proxyPtr attributeName (fromIntegral newValue) HaskellDevLong64 HaskellAttributeDataLong64Array
 
 writeLong64SpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Int64] -> m ()
 writeLong64SpectrumAttribute proxyPtr attributeName newValues =
-  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevLong64 HaskellAttributeDataLongArray
+  writeSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues) HaskellDevLong64 HaskellAttributeDataLong64Array
 
 writeLong64ImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Int64 -> m ()
 writeLong64ImageAttribute proxyPtr attributeName newImage =
-  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevLong64 HaskellAttributeDataLongArray
-
-writeDoubleAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Double -> m ()
-writeDoubleAttribute proxyPtr attributeName newValue = do
-  writeScalarAttribute proxyPtr attributeName (realToFrac newValue) HaskellDevDouble HaskellAttributeDataDoubleArray
+  writeImageAttribute proxyPtr attributeName (fromIntegral <$> newImage) HaskellDevLong64 HaskellAttributeDataLong64Array
 
 -- | Newtype wrapper to wrap an attribute name
 newtype AttributeName = AttributeName Text deriving (Show)
