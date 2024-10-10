@@ -236,6 +236,7 @@ data HaskellTangoDataType
   | HaskellDevULong
   | HaskellDevString
   | HaskellDevVarCharArray
+  | HaskellDevVarStateArray
   | HaskellDevVarShortArray
   | HaskellDevVarLongArray
   | HaskellDevVarFloatArray
@@ -552,6 +553,7 @@ instance Storable HaskellDbDatum where
       HaskellDevString -> (withoutType . HaskellPropString) <$> ((# peek DbDatum, prop_data) ptr)
       HaskellDevVarCharArray -> error "type var char array not supported in dbdatum"
       HaskellDevVarShortArray -> (withoutType . HaskellPropShortArray) <$> ((# peek DbDatum, prop_data) ptr)
+      HaskellDevVarStateArray -> error "type var state array not supported in dbdatum"
       HaskellDevVarLongArray -> (withoutType . HaskellPropLongArray) <$> ((# peek DbDatum, prop_data) ptr)
       HaskellDevVarFloatArray -> (withoutType . HaskellPropFloatArray) <$> ((# peek DbDatum, prop_data) ptr)
       HaskellDevVarDoubleArray -> (withoutType . HaskellPropDoubleArray) <$> ((# peek DbDatum, prop_data) ptr)
@@ -636,6 +638,9 @@ instance Storable HaskellAttributeData where
       HaskellDevVarCharArray -> do
         attr_data' <- (# peek AttributeData, attr_data) ptr
         pure (withoutType (HaskellAttributeDataCharArray attr_data'))
+      HaskellDevVarStateArray -> do
+        attr_data' <- (# peek AttributeData, attr_data) ptr
+        pure (withoutType (HaskellAttributeDataStateArray attr_data'))
       HaskellDevVarShortArray -> do
         attr_data' <- (# peek AttributeData, attr_data) ptr
         pure (withoutType (HaskellAttributeDataShortArray attr_data'))

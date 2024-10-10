@@ -11,9 +11,11 @@ module Tango.Client
     checkResult,
     getConfigsForAttributes,
     AttributeInfo (..),
-    commandInOutVoid,
+    commandInVoidOutVoid,
     HaskellDevFailed (HaskellDevFailed),
+    CommandData (..),
     TangoValue (TangoValue),
+    commandInOutGeneric,
     Image (Image, imageContent, imageDimX, imageDimY),
     devFailedDesc,
     throwTangoException,
@@ -142,7 +144,19 @@ import Tango.Raw.Common
     HaskellDevFailed (HaskellDevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     HaskellDispLevel,
     HaskellErrorStack (errorStackLength, errorStackSequence),
-    HaskellTangoAttributeData (HaskellAttributeDataBoolArray, HaskellAttributeDataDoubleArray, HaskellAttributeDataFloatArray, HaskellAttributeDataLong64Array, HaskellAttributeDataLongArray, HaskellAttributeDataShortArray, HaskellAttributeDataStateArray, HaskellAttributeDataStringArray, HaskellAttributeDataULong64Array, HaskellAttributeDataULongArray, HaskellAttributeDataUShortArray),
+    HaskellTangoAttributeData
+      ( HaskellAttributeDataBoolArray,
+        HaskellAttributeDataDoubleArray,
+        HaskellAttributeDataFloatArray,
+        HaskellAttributeDataLong64Array,
+        HaskellAttributeDataLongArray,
+        HaskellAttributeDataShortArray,
+        HaskellAttributeDataStateArray,
+        HaskellAttributeDataStringArray,
+        HaskellAttributeDataULong64Array,
+        HaskellAttributeDataULongArray,
+        HaskellAttributeDataUShortArray
+      ),
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
     HaskellTangoDevState (..),
@@ -715,13 +729,168 @@ readEnumImageAttribute = readAttributeSimple extractEnum (convertGenericImage (t
 
 newtype CommandName = CommandName Text
 
-commandInOutVoid :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> CommandName -> m ()
-commandInOutVoid proxyPtr (CommandName commandName) =
+data CommandData t
+  = CommandVoid
+  | CommandBool !Bool
+  | CommandInt16 !Int16
+  | CommandWord16 !Word16
+  | CommandInt64 !Int64
+  | CommandWord64 !Word64
+  | CommandFloat !Float
+  | CommandDouble !Double
+  | CommandText !Text
+  | CommandState !HaskellTangoDevState
+  | CommandEnum !t
+  | CommandListBool ![Bool]
+  | CommandListInt16 ![Int16]
+  | CommandListWord16 ![Word16]
+  | CommandListInt64 ![Int64]
+  | CommandListWord64 ![Word64]
+  | CommandListLong64 ![Int64]
+  | CommandListULong64 ![Word64]
+  | CommandListFloat ![Float]
+  | CommandListDouble ![Double]
+  | CommandListText ![Text]
+  | CommandListState ![HaskellTangoDevState]
+  deriving (Show)
+
+commandInVoidOutVoid :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> CommandName -> m ()
+commandInVoidOutVoid proxyPtr (CommandName commandName) =
   liftIO $
     withCString (unpack commandName) $
       \commandNamePtr ->
         with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) $ \commandDataInPtr -> with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) $ \commandDataOutPtr ->
           checkResult $ tango_command_inout proxyPtr commandNamePtr commandDataInPtr commandDataOutPtr
+
+withVarArray :: (UnliftIO.MonadUnliftIO m, Storable a) => [a] -> (HaskellTangoVarArray a -> m b) -> m b
+withVarArray b f = withArray b (f . HaskellTangoVarArray (fromIntegral (length b)))
+
+newCStringText :: (UnliftIO.MonadUnliftIO m) => Text -> m CString
+newCStringText = newCString . unpack
+
+withRawCommandData :: (UnliftIO.MonadUnliftIO m, Enum t) => CommandData t -> (Ptr HaskellCommandData -> m a) -> m a
+withRawCommandData CommandVoid f = with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) f
+withRawCommandData (CommandBool b) f = with (HaskellCommandData HaskellDevBoolean (HaskellCommandBool (if b then 1 else 0))) f
+withRawCommandData (CommandInt16 b) f = with (HaskellCommandData HaskellDevShort (HaskellCommandInt16 (fromIntegral b))) f
+withRawCommandData (CommandWord16 b) f = with (HaskellCommandData HaskellDevUShort (HaskellCommandUInt16 (fromIntegral b))) f
+withRawCommandData (CommandInt64 b) f = with (HaskellCommandData HaskellDevShort (HaskellCommandULong64 (fromIntegral b))) f
+withRawCommandData (CommandWord64 b) f = with (HaskellCommandData HaskellDevUShort (HaskellCommandLong64 (fromIntegral b))) f
+withRawCommandData (CommandFloat b) f = with (HaskellCommandData HaskellDevFloat (HaskellCommandFloat (realToFrac b))) f
+withRawCommandData (CommandDouble b) f = with (HaskellCommandData HaskellDevDouble (HaskellCommandDouble (realToFrac b))) f
+withRawCommandData (CommandText t) f =
+  UnliftIO.bracket
+    (newCString (unpack t))
+    free
+    (\s -> with (HaskellCommandData HaskellDevString (HaskellCommandCString s)) f)
+withRawCommandData (CommandState b) f = with (HaskellCommandData HaskellDevState (HaskellCommandDevState b)) f
+withRawCommandData (CommandEnum b) f = with (HaskellCommandData HaskellDevEnum (HaskellCommandDevEnum (fromIntegral (fromEnum b)))) f
+withRawCommandData (CommandListBool b) f =
+  withVarArray
+    ((\x -> if x then 1 else 0) <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarBooleanArray (HaskellCommandVarBool varList)) f
+withRawCommandData (CommandListInt16 b) f =
+  withVarArray
+    (fromIntegral <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarShortArray (HaskellCommandVarShort varList)) f
+withRawCommandData (CommandListWord16 b) f =
+  withVarArray
+    (fromIntegral <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarUShortArray (HaskellCommandVarUShort varList)) f
+withRawCommandData (CommandListInt64 b) f =
+  withVarArray
+    (fromIntegral <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarLongArray (HaskellCommandVarLong varList)) f
+withRawCommandData (CommandListLong64 b) f =
+  withVarArray
+    (fromIntegral <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarLong64Array (HaskellCommandVarLong64 varList)) f
+withRawCommandData (CommandListWord64 b) f =
+  withVarArray
+    (fromIntegral <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarULongArray (HaskellCommandVarULong varList)) f
+withRawCommandData (CommandListULong64 b) f =
+  withVarArray
+    (fromIntegral <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarULong64Array (HaskellCommandVarULong64 varList)) f
+withRawCommandData (CommandListFloat b) f =
+  withVarArray
+    (realToFrac <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarFloatArray (HaskellCommandVarFloat varList)) f
+withRawCommandData (CommandListDouble b) f =
+  withVarArray
+    (realToFrac <$> b)
+    \varList ->
+      with (HaskellCommandData HaskellDevVarDoubleArray (HaskellCommandVarDouble varList)) f
+withRawCommandData (CommandListText texts) f =
+  UnliftIO.bracket
+    (traverse newCStringText texts)
+    (traverse free)
+    ( \textPtrList -> withVarArray
+        textPtrList
+        \varList ->
+          with (HaskellCommandData HaskellDevVarStringArray (HaskellCommandVarCString varList)) f
+    )
+withRawCommandData (CommandListState b) f =
+  withVarArray
+    b
+    \varList ->
+      with (HaskellCommandData HaskellDevVarStateArray (HaskellCommandVarDevState varList)) f
+
+tangoVarArrayToList :: (UnliftIO.MonadUnliftIO m, Storable a) => HaskellTangoVarArray a -> m [a]
+tangoVarArrayToList (HaskellTangoVarArray {varArrayLength, varArrayValues}) =
+  peekArray (fromIntegral varArrayLength) varArrayValues
+
+fromRawCommandData :: (UnliftIO.MonadUnliftIO m, Enum t) => HaskellCommandData -> m (Maybe (CommandData t))
+fromRawCommandData (HaskellCommandData {tangoCommandData}) =
+  case tangoCommandData of
+    HaskellCommandVoid -> pure $ Just $ CommandVoid
+    HaskellCommandBool cbool -> pure $ Just $ CommandBool $ cbool /= 0
+    HaskellCommandInt16 v -> pure $ Just $ CommandInt16 $ fromIntegral v
+    HaskellCommandUInt16 v -> pure $ Just $ CommandWord16 $ fromIntegral v
+    HaskellCommandFloat v -> pure $ Just $ CommandFloat $ realToFrac v
+    HaskellCommandDouble v -> pure $ Just $ CommandDouble $ realToFrac v
+    HaskellCommandCString v -> Just . CommandText . pack <$> peekCString v
+    HaskellCommandLong64 v -> pure $ Just $ CommandInt64 $ fromIntegral v
+    HaskellCommandDevState v -> pure $ Just $ CommandState v
+    HaskellCommandULong64 v -> pure $ Just $ CommandWord64 $ fromIntegral v
+    HaskellCommandDevEnum v -> pure $ Just $ CommandEnum $ toEnum $ fromIntegral v
+    HaskellCommandVarBool a -> Just . CommandListBool . ((/= 0) <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarShort a -> Just . CommandListInt16 . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarUShort a -> Just . CommandListWord16 . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarLong a -> Just . CommandListInt64 . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarULong a -> Just . CommandListWord64 . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarLong64 a -> Just . CommandListLong64 . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarULong64 a -> Just . CommandListULong64 . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarFloat a -> Just . CommandListFloat . (realToFrac <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarDouble a -> Just . CommandListDouble . (realToFrac <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarCString strings -> do
+      stringsAsList <- tangoVarArrayToList strings
+      texts <- traverse peekCStringText stringsAsList
+      pure (Just (CommandListText texts))
+    HaskellCommandVarDevState a -> Just . CommandListState <$> tangoVarArrayToList a
+    _ -> pure Nothing
+
+commandInOutGeneric :: (UnliftIO.MonadUnliftIO m, Enum t, Enum u) => DeviceProxyPtr -> CommandName -> CommandData t -> m (CommandData u)
+commandInOutGeneric proxyPtr (CommandName commandName) in' =
+  liftIO $
+    withCString (unpack commandName) $
+      \commandNamePtr ->
+        withRawCommandData in' \commandDataInPtr ->
+          with (RawCommon.HaskellCommandData RawCommon.HaskellDevVoid RawCommon.HaskellCommandVoid) $ \commandDataOutPtr -> do
+            checkResult $ tango_command_inout proxyPtr commandNamePtr commandDataInPtr commandDataOutPtr
+            outValue <- peek commandDataOutPtr
+            result <- fromRawCommandData outValue
+            case result of
+              Nothing -> error "couldn't convert the command out value"
+              Just result' -> pure result'
 
 throwTangoException :: (MonadIO m) => Text -> m ()
 throwTangoException desc = do

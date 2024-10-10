@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
@@ -42,3 +43,6 @@ main =
       -- putStrLn "string image end"
 
       writeLong64Attribute proxy (AttributeName "long64_scalar") 1337
+
+      result :: CommandData Int <- commandInOutGeneric proxy (CommandName "DevVoid") (CommandVoid :: CommandData Int)
+      putStrLn $ "result of DevVoid command: " <> show result
