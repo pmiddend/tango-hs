@@ -21,6 +21,7 @@ module Tango.Client
     commandInVoidOutVoid,
     getDeviceProperties,
     putDeviceProperties,
+    deleteDeviceProperties,
     PropertyName (..),
     HaskellDevFailed (HaskellDevFailed),
     CommandData (..),
@@ -179,6 +180,7 @@ import Tango.Raw.Common
     Timeval (..),
     tango_command_inout,
     tango_create_device_proxy,
+    tango_delete_device_property,
     tango_delete_device_proxy,
     tango_free_AttributeData,
     tango_free_AttributeInfoList,
@@ -1095,3 +1097,19 @@ putDeviceProperties proxyPtr namesAndValues =
           with
             (HaskellDbData (fromIntegral (length namesAndValues)) dbDatumPtrIn)
             (checkResult . liftIO . tango_put_device_property proxyPtr)
+
+deleteDeviceProperties :: forall m. (MonadUnliftIO m) => DeviceProxy -> [PropertyName] -> m ()
+deleteDeviceProperties proxyPtr names =
+  let initialize :: m [HaskellDbDatum]
+      initialize = traverse nameToDbDatum names
+      destroy :: [HaskellDbDatum] -> m ()
+      destroy = void . traverse freeDbDatum
+   in UnliftIO.bracket
+        initialize
+        destroy
+        \dbDatumPtrListIn ->
+          withArray dbDatumPtrListIn \dbDatumPtrIn ->
+            liftIO $
+              with
+                (HaskellDbData (fromIntegral (length names)) dbDatumPtrIn)
+                (checkResult . liftIO . tango_delete_device_property proxyPtr)
