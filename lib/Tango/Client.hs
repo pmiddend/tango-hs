@@ -18,6 +18,8 @@ module Tango.Client
     CommandData (..),
     TangoValue (TangoValue),
     commandInOutGeneric,
+    commandInEnumOutGeneric,
+    commandInGenericOutEnum,
     Image (Image, imageContent, imageDimX, imageDimY),
     devFailedDesc,
     throwTangoException,
@@ -740,6 +742,9 @@ readEnumImageAttribute = readAttributeSimple extractEnum (convertGenericImage (t
 
 newtype CommandName = CommandName Text
 
+instance Show CommandName where
+  show (CommandName n) = show (unpack n)
+
 data CommandData
   = CommandVoid
   | CommandBool !Bool
@@ -902,6 +907,16 @@ commandInOutGeneric proxyPtr (CommandName commandName) in' =
             case result of
               Nothing -> error "couldn't convert the command out value"
               Just result' -> pure result'
+
+commandInEnumOutGeneric :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxyPtr -> CommandName -> t -> m CommandData
+commandInEnumOutGeneric proxyPtr commandName in' = commandInOutGeneric proxyPtr commandName (CommandShort $ fromIntegral $ fromEnum $ in')
+
+commandInGenericOutEnum :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxyPtr -> CommandName -> CommandData -> m t
+commandInGenericOutEnum proxyPtr commandName in' = do
+  result <- commandInOutGeneric proxyPtr commandName in'
+  case result of
+    CommandShort s -> pure (toEnum (fromIntegral s))
+    _ -> error ("command " <> show commandName <> " was supposed to return a short (for enums), but returned " <> show result)
 
 throwTangoException :: (MonadIO m) => Text -> m ()
 throwTangoException desc = do

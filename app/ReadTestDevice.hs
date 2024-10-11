@@ -47,3 +47,12 @@ main =
 
       result <- commandInOutGeneric proxy (CommandName "DevVoid") CommandVoid
       putStrLn $ "result of DevVoid command: " <> show result
+
+      result' <- commandInOutGeneric proxy (CommandName "DevBoolean") (CommandBool True)
+      putStrLn $ "result of DevBoolean True command: " <> show result'
+
+      result'' <- commandInOutGeneric proxy (CommandName "DevDouble") (CommandDouble 3.5)
+      putStrLn $ "result of DevDouble 3.5 command: " <> show result''
+
+      result''' <- commandInOutGeneric proxy (CommandName "DevVarDoubleArray") (CommandListDouble [3.5, 4.0])
+      putStrLn $ "result of DevVarDoubleArray [3.5, 4.0] command: " <> show result'''
