@@ -7,6 +7,7 @@ description:
 
   * There are raw C bindings inside the @Tango.Raw@ package. You shouldn't have to use these, but they might be a fallback if you need something very specific.
   * C types are mapped to sized Haskell types. For example, an attribute of type "Short" will be mapped to the @Int16@ type. The names of the value constructors will be called ...Short, still, to have some symmetry with the Tango user interfaces.
+  * The implementation regarding some obscure types is lackluster: "encoded", "long string array" and "double string array" for example. Patches welcome!
 homepage: https://github.com/pmiddend/hs-tango
 
 license:            GPL-3.0-or-later

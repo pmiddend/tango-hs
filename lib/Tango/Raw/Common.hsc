@@ -229,6 +229,8 @@ data HaskellTangoPropertyData
   | HaskellPropStringArray !(HaskellTangoVarArray CString)
   deriving (Show)
 
+-- | Haskell mapping for the C type TangoDataType
+-- Beware: this is encoded positionally!
 data HaskellTangoDataType
   = HaskellDevVoid
   | HaskellDevBoolean
@@ -240,7 +242,6 @@ data HaskellTangoDataType
   | HaskellDevULong
   | HaskellDevString
   | HaskellDevVarCharArray
-  | HaskellDevVarStateArray
   | HaskellDevVarShortArray
   | HaskellDevVarLongArray
   | HaskellDevVarFloatArray
@@ -263,6 +264,8 @@ data HaskellTangoDataType
   | HaskellDevEnum
   | -- We explicitly have a type with index 29 and I don't know what that's supposed to be
     HaskellDevUnknown
+  | HaskellDevVarStateArray
+  | HaskellDevVarEncodedArray
   deriving (Show, Eq, Ord, Bounded, Enum)
 
 instance Storable HaskellTangoDataType where
@@ -576,6 +579,7 @@ instance Storable HaskellDbDatum where
       HaskellDevULong64 -> (withoutType . HaskellPropULong64) <$> ((# peek DbDatum, prop_data) ptr)
       HaskellDevInt -> error "type int not supported in dbdatum"
       HaskellDevEncoded -> error "type encoded not supported in dbdatum"
+      HaskellDevVarEncodedArray -> error "type encoded array not supported in dbdatum"
       HaskellDevVarLong64Array -> (withoutType . HaskellPropLong64Array) <$> ((# peek DbDatum, prop_data) ptr)
       HaskellDevVarULong64Array -> (withoutType . HaskellPropULong64Array) <$> ((# peek DbDatum, prop_data) ptr)
   poke ptr haskellDbDatum = do
@@ -613,8 +617,9 @@ instance Storable HaskellAttributeData where
             time_stamp'
             data_type'
     case data_type' of
-      HaskellDevUnknown -> error "countered DevUnknown data type"
-      HaskellDevVoid -> error "countered DevVoid data type"
+      HaskellDevUnknown -> error "encountered DevUnknown data type"
+      HaskellDevVoid -> error "encountered DevVoid data type"
+      HaskellDevVarEncodedArray -> error "encountered DevVarEncodedArray data type"
       HaskellDevBoolean -> do
         attr_data' <- (# peek AttributeData, attr_data) ptr
         pure (withoutType (HaskellAttributeDataBoolArray attr_data'))
