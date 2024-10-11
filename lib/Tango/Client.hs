@@ -8,6 +8,11 @@
 
 -- |
 -- Description : High-level interface to all client-related functions (mostly functions using a Device Proxy)
+--
+-- Properties
+--
+-- The property retrieval API for Tango is elaborate, supporting different data types. We condensed this down to
+-- retrieving lists of strings. Conversion needs to happen on the Haskell side for now.
 module Tango.Client
   ( withDeviceProxy,
     checkResult,
@@ -1012,58 +1017,17 @@ newtype PropertyName = PropertyName Text
 instance Show PropertyName where
   show (PropertyName x) = show (unpack x)
 
-data PropertyData
-  = PropertyDataBool !Bool
-  | PropertyDataChar !Char
-  | PropertyDataShort !Int16
-  | PropertyDataUShort !Word16
-  | PropertyDataLong !Int32
-  | PropertyDataULong !Word32
-  | PropertyDataFloat !Float
-  | PropertyDataDouble !Double
-  | PropertyDataString !Text
-  | PropertyDataLong64 !Int64
-  | PropertyDataULong64 !Word64
-  | PropertyDataListShort ![Int16]
-  | PropertyDataListUShort ![Word16]
-  | PropertyDataListLong ![Int64]
-  | PropertyDataListULong ![Word64]
-  | PropertyDataListLong64 ![Int64]
-  | PropertyDataListULong64 ![Word64]
-  | PropertyDataListFloat ![Float]
-  | PropertyDataListDouble ![Double]
-  | PropertyDataListString ![Text]
-  deriving (Show)
-
 data Property = Property
   { propertyName :: !Text,
     propertyIsEmpty :: !Bool,
     propertyWrongDataType :: !Bool,
-    propertyData :: !PropertyData
+    propertyData :: ![Text]
   }
   deriving (Show)
 
-convertPropertyData :: (MonadUnliftIO m) => HaskellTangoPropertyData -> m PropertyData
-convertPropertyData (HaskellPropBool bool) = pure (PropertyDataBool (cboolToBool bool))
-convertPropertyData (HaskellPropChar v) = pure (PropertyDataChar (castCCharToChar v))
-convertPropertyData (HaskellPropShort v) = pure (PropertyDataShort (fromIntegral v))
-convertPropertyData (HaskellPropUShort bool) = pure (PropertyDataUShort (fromIntegral bool))
-convertPropertyData (HaskellPropLong v) = pure (PropertyDataLong (fromIntegral v))
-convertPropertyData (HaskellPropULong v) = pure (PropertyDataULong (fromIntegral v))
-convertPropertyData (HaskellPropFloat v) = pure (PropertyDataFloat (realToFrac v))
-convertPropertyData (HaskellPropDouble v) = pure (PropertyDataDouble (realToFrac v))
-convertPropertyData (HaskellPropString v) = PropertyDataString <$> peekCStringText v
-convertPropertyData (HaskellPropLong64 v) = pure (PropertyDataLong64 (fromIntegral v))
-convertPropertyData (HaskellPropULong64 v) = pure (PropertyDataULong64 (fromIntegral v))
-convertPropertyData (HaskellPropShortArray v) = PropertyDataListShort . (fromIntegral <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropUShortArray v) = PropertyDataListUShort . (fromIntegral <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropLongArray v) = PropertyDataListLong . (fromIntegral <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropULongArray v) = PropertyDataListULong . (fromIntegral <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropLong64Array v) = PropertyDataListLong64 . (fromIntegral <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropULong64Array v) = PropertyDataListULong64 . (fromIntegral <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropFloatArray v) = PropertyDataListFloat . (realToFrac <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropDoubleArray v) = PropertyDataListDouble . (realToFrac <$>) <$> tangoVarArrayToList v
-convertPropertyData (HaskellPropStringArray v) = PropertyDataListString <$> (tangoVarArrayToList v >>= traverse peekCStringText)
+convertPropertyData :: (MonadUnliftIO m) => HaskellTangoPropertyData -> m [Text]
+convertPropertyData (HaskellPropStringArray v) = tangoVarArrayToList v >>= traverse peekCStringText
+convertPropertyData v = error $ "couldn't convert property data to Haskell: " <> show v
 
 convertDbDatum :: (MonadUnliftIO m) => HaskellDbDatum -> m Property
 convertDbDatum dbDatum = do
