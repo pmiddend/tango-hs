@@ -14,6 +14,8 @@ module Tango.Client
     getConfigsForAttributes,
     AttributeInfo (..),
     commandInVoidOutVoid,
+    getDeviceProperties,
+    PropertyName (..),
     HaskellDevFailed (HaskellDevFailed),
     CommandData (..),
     TangoValue (TangoValue),
@@ -145,6 +147,8 @@ import Tango.Raw.Common
     HaskellCommandData (..),
     HaskellDataFormat (..),
     HaskellDataQuality (..),
+    HaskellDbData (..),
+    HaskellDbDatum (..),
     HaskellDevFailed (HaskellDevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     HaskellDispLevel,
     HaskellErrorStack (errorStackLength, errorStackSequence),
@@ -164,6 +168,7 @@ import Tango.Raw.Common
     HaskellTangoCommandData (..),
     HaskellTangoDataType (..),
     HaskellTangoDevState (..),
+    HaskellTangoPropertyData (..),
     HaskellTangoVarArray (..),
     Timeval (..),
     tango_command_inout,
@@ -172,7 +177,11 @@ import Tango.Raw.Common
     tango_free_AttributeData,
     tango_free_AttributeInfoList,
     tango_free_CommandData,
+    tango_free_DbData,
+    tango_free_DbDatum,
     tango_get_attribute_config,
+    tango_get_device_property,
+    tango_get_property,
     tango_get_timeout_millis,
     tango_read_attribute,
     tango_set_timeout_millis,
@@ -181,9 +190,10 @@ import Tango.Raw.Common
   )
 import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
+import UnliftIO (MonadUnliftIO)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
-import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castPtr, free, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
+import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castCCharToChar, castPtr, free, new, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
 import Prelude (Double, Enum (fromEnum, toEnum), Float, Integral, Num ((*)), div, error, fromIntegral, realToFrac, undefined)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
@@ -909,7 +919,7 @@ commandInOutGeneric proxyPtr (CommandName commandName) in' =
               Just result' -> pure result'
 
 commandInEnumOutGeneric :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxyPtr -> CommandName -> t -> m CommandData
-commandInEnumOutGeneric proxyPtr commandName in' = commandInOutGeneric proxyPtr commandName (CommandShort $ fromIntegral $ fromEnum $ in')
+commandInEnumOutGeneric proxyPtr commandName in' = commandInOutGeneric proxyPtr commandName (CommandShort $ fromIntegral $ fromEnum in')
 
 commandInGenericOutEnum :: (UnliftIO.MonadUnliftIO m, Enum t) => DeviceProxyPtr -> CommandName -> CommandData -> m t
 commandInGenericOutEnum proxyPtr commandName in' = do
@@ -996,3 +1006,102 @@ getConfigsForAttributes deviceProxyPtr attributeNames = do
               outputPeeked <- peek outputPtr
               elements <- peekArray (fromIntegral (attributeInfoListLength outputPeeked)) (attributeInfoListSequence outputPeeked)
               traverse convertAttributeInfo elements
+
+newtype PropertyName = PropertyName Text
+
+instance Show PropertyName where
+  show (PropertyName x) = show (unpack x)
+
+data PropertyData
+  = PropertyDataBool !Bool
+  | PropertyDataChar !Char
+  | PropertyDataShort !Int16
+  | PropertyDataUShort !Word16
+  | PropertyDataLong !Int32
+  | PropertyDataULong !Word32
+  | PropertyDataFloat !Float
+  | PropertyDataDouble !Double
+  | PropertyDataString !Text
+  | PropertyDataLong64 !Int64
+  | PropertyDataULong64 !Word64
+  | PropertyDataListShort ![Int16]
+  | PropertyDataListUShort ![Word16]
+  | PropertyDataListLong ![Int64]
+  | PropertyDataListULong ![Word64]
+  | PropertyDataListLong64 ![Int64]
+  | PropertyDataListULong64 ![Word64]
+  | PropertyDataListFloat ![Float]
+  | PropertyDataListDouble ![Double]
+  | PropertyDataListString ![Text]
+  deriving (Show)
+
+data Property = Property
+  { propertyName :: !Text,
+    propertyIsEmpty :: !Bool,
+    propertyWrongDataType :: !Bool,
+    propertyData :: !PropertyData
+  }
+  deriving (Show)
+
+convertPropertyData :: (MonadUnliftIO m) => HaskellTangoPropertyData -> m PropertyData
+convertPropertyData (HaskellPropBool bool) = pure (PropertyDataBool (cboolToBool bool))
+convertPropertyData (HaskellPropChar v) = pure (PropertyDataChar (castCCharToChar v))
+convertPropertyData (HaskellPropShort v) = pure (PropertyDataShort (fromIntegral v))
+convertPropertyData (HaskellPropUShort bool) = pure (PropertyDataUShort (fromIntegral bool))
+convertPropertyData (HaskellPropLong v) = pure (PropertyDataLong (fromIntegral v))
+convertPropertyData (HaskellPropULong v) = pure (PropertyDataULong (fromIntegral v))
+convertPropertyData (HaskellPropFloat v) = pure (PropertyDataFloat (realToFrac v))
+convertPropertyData (HaskellPropDouble v) = pure (PropertyDataDouble (realToFrac v))
+convertPropertyData (HaskellPropString v) = PropertyDataString <$> peekCStringText v
+convertPropertyData (HaskellPropLong64 v) = pure (PropertyDataLong64 (fromIntegral v))
+convertPropertyData (HaskellPropULong64 v) = pure (PropertyDataULong64 (fromIntegral v))
+convertPropertyData (HaskellPropShortArray v) = PropertyDataListShort . (fromIntegral <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropUShortArray v) = PropertyDataListUShort . (fromIntegral <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropLongArray v) = PropertyDataListLong . (fromIntegral <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropULongArray v) = PropertyDataListULong . (fromIntegral <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropLong64Array v) = PropertyDataListLong64 . (fromIntegral <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropULong64Array v) = PropertyDataListULong64 . (fromIntegral <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropFloatArray v) = PropertyDataListFloat . (realToFrac <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropDoubleArray v) = PropertyDataListDouble . (realToFrac <$>) <$> tangoVarArrayToList v
+convertPropertyData (HaskellPropStringArray v) = PropertyDataListString <$> (tangoVarArrayToList v >>= traverse peekCStringText)
+
+convertDbDatum :: (MonadUnliftIO m) => HaskellDbDatum -> m Property
+convertDbDatum dbDatum = do
+  propData <- convertPropertyData (dbDatumPropData dbDatum)
+  nameConverted <- peekCStringText (dbDatumPropertyName dbDatum)
+  pure $
+    Property
+      nameConverted
+      (dbDatumIsEmpty dbDatum)
+      (dbDatumWrongDataType dbDatum)
+      propData
+
+nameToDbDatum :: (MonadUnliftIO m) => PropertyName -> m HaskellDbDatum
+nameToDbDatum (PropertyName name) = do
+  nameCString <- newCString (unpack name)
+  pure (HaskellDbDatum nameCString False False HaskellDevVarStringArray (HaskellPropStringArray (HaskellTangoVarArray 0 nullPtr)))
+
+freeDbDatum :: (MonadUnliftIO m) => HaskellDbDatum -> m ()
+freeDbDatum dbDatum = do
+  dbDatumPtr <- new dbDatum
+  -- free (dbDatumPropertyName dbDatum)
+  liftIO (tango_free_DbDatum dbDatumPtr)
+
+getDeviceProperties :: forall m. (MonadUnliftIO m) => DeviceProxy -> [PropertyName] -> m [Property]
+getDeviceProperties proxyPtr names =
+  let initialize :: m [HaskellDbDatum]
+      initialize = traverse nameToDbDatum names
+      destroy :: [HaskellDbDatum] -> m ()
+      destroy = void . traverse freeDbDatum
+   in UnliftIO.bracket
+        initialize
+        destroy
+        \dbDatumPtrListIn ->
+          withArray dbDatumPtrListIn \dbDatumPtrIn ->
+            liftIO $ with
+              (HaskellDbData (fromIntegral (length names)) dbDatumPtrIn)
+              \dbDataPtr -> do
+                checkResult (liftIO (tango_get_device_property proxyPtr dbDataPtr))
+                dbData <- liftIO (peek dbDataPtr)
+                dbDatumPtrListOut <- peekArray (fromIntegral (dbDataLength dbData)) (dbDataSequence dbData)
+                traverse convertDbDatum dbDatumPtrListOut

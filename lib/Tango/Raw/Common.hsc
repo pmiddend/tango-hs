@@ -15,6 +15,7 @@ module Tango.Raw.Common
     tango_write_attribute,
     HaskellTangoDevState (..),
     HaskellDispLevel (..),
+    HaskellTangoPropertyData (..),
     HaskellTangoDevEncoded (..),
     tango_poll_command,
     tango_stop_poll_command,
@@ -52,6 +53,7 @@ module Tango.Raw.Common
     tango_put_device_property,
     HaskellDataQuality (..),
     HaskellDbData (..),
+    HaskellDbDatum (..),
     HaskellAttributeInfoList (..),
     HaskellAttributeDataList (..),
     Timeval (..),
@@ -592,6 +594,7 @@ instance Storable HaskellDbDatum where
         (# poke DbDatum, prop_data) ptr doubles'
       HaskellPropStringArray strings' -> do
         (# poke DbDatum, prop_data) ptr strings'
+      -- FIXME?
       _ -> pure ()
 
 instance Storable HaskellAttributeData where
