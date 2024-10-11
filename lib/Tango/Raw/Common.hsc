@@ -15,6 +15,7 @@ module Tango.Raw.Common
     tango_write_attribute,
     HaskellTangoDevState (..),
     HaskellDispLevel (..),
+    HaskellTangoDevEncoded (..),
     tango_poll_command,
     tango_stop_poll_command,
     tango_free_AttributeInfoList,
@@ -153,11 +154,14 @@ devSourceFromInt 0 = Dev
 devSourceFromInt 1 = Cache
 devSourceFromInt _ = CacheDev
 
+-- Whatever type Tango reserves for enumerations
+type CTangoEnum = CShort
+
 data HaskellTangoCommandData
   = HaskellCommandVoid
   | HaskellCommandBool !CBool
-  | HaskellCommandInt16 !CShort
-  | HaskellCommandUInt16 !CUShort
+  | HaskellCommandShort !CShort
+  | HaskellCommandUShort !CUShort
   | HaskellCommandInt32 !CInt
   | HaskellCommandUInt32 !CUInt
   | HaskellCommandFloat !CFloat
@@ -167,7 +171,7 @@ data HaskellTangoCommandData
   | HaskellCommandDevState !HaskellTangoDevState
   | HaskellCommandULong64 !CULong
   | HaskellCommandDevEncoded !HaskellTangoDevEncoded
-  | HaskellCommandDevEnum !CShort
+  | HaskellCommandDevEnum !CTangoEnum
   | HaskellCommandVarBool !(HaskellTangoVarArray CBool)
   | HaskellCommandVarChar !(HaskellTangoVarArray CChar)
   | HaskellCommandVarShort !(HaskellTangoVarArray CShort)
@@ -727,10 +731,10 @@ instance Storable HaskellCommandData where
         pure (HaskellCommandData data_type' (HaskellCommandBool cmd_data'))
       HaskellDevShort -> do
         cmd_data' <- (# peek CommandData, cmd_data) ptr
-        pure (HaskellCommandData data_type' (HaskellCommandInt16 cmd_data'))
+        pure (HaskellCommandData data_type' (HaskellCommandShort cmd_data'))
       HaskellDevUShort -> do
         cmd_data' <- (# peek CommandData, cmd_data) ptr
-        pure (HaskellCommandData data_type' (HaskellCommandUInt16 cmd_data'))
+        pure (HaskellCommandData data_type' (HaskellCommandUShort cmd_data'))
       -- There seems to be no "UInt" for some reason
       HaskellDevInt -> do
         cmd_data' <- (# peek CommandData, cmd_data) ptr
@@ -808,8 +812,8 @@ instance Storable HaskellCommandData where
     case tangoCommandData' of
       HaskellCommandVoid -> pure ()
       HaskellCommandBool v -> (# poke CommandData, cmd_data) ptr v
-      HaskellCommandInt16 v -> (# poke CommandData, cmd_data) ptr v
-      HaskellCommandUInt16 v -> (# poke CommandData, cmd_data) ptr v
+      HaskellCommandShort v -> (# poke CommandData, cmd_data) ptr v
+      HaskellCommandUShort v -> (# poke CommandData, cmd_data) ptr v
       HaskellCommandInt32 v -> (# poke CommandData, cmd_data) ptr v
       HaskellCommandUInt32 v -> (# poke CommandData, cmd_data) ptr v
       HaskellCommandFloat v -> (# poke CommandData, cmd_data) ptr v

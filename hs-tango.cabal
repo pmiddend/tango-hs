@@ -2,7 +2,11 @@ cabal-version:      3.6
 name:               hs-tango
 version:            1.0.0
 synopsis:           Bindings to the Tango Controls system
--- description:
+description:
+  Haskell bindings for Tango, part of the Tango Distributed Control System toolkit. Some general notes about this project:
+
+  * There are raw C bindings inside the @Tango.Raw@ package. You shouldn't have to use these, but they might be a fallback if you need something very specific.
+  * C types are mapped to sized Haskell types. For example, an attribute of type "Short" will be mapped to the @Int16@ type. The names of the value constructors will be called ...Short, still, to have some symmetry with the Tango user interfaces.
 homepage: https://github.com/pmiddend/hs-tango
 
 license:            GPL-3.0-or-later

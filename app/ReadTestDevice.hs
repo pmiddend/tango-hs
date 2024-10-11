@@ -5,6 +5,7 @@
 
 module Main where
 
+import Data.Int (Int16)
 import Data.Text.IO qualified as TIO
 import Tango.Client
 
@@ -28,7 +29,7 @@ main =
       -- booleanImageResult <- readBoolImageAttribute proxy (AttributeName "boolean_image")
       -- putStrLn $ "boolean_image is " <> show booleanImageResult
 
-      enumResult <- readShortAttribute proxy (AttributeName "enum_scalar")
+      enumResult :: TangoValue Int16 <- readEnumAttribute proxy (AttributeName "enum_scalar")
       putStrLn $ "enum_scalar is " <> show enumResult
 
       attributeList <- getConfigsForAttributes proxy [AttributeName "enum_scalar_ro"]
@@ -44,5 +45,5 @@ main =
 
       writeLong64Attribute proxy (AttributeName "long64_scalar") 1337
 
-      result :: CommandData Int <- commandInOutGeneric proxy (CommandName "DevVoid") (CommandVoid :: CommandData Int)
+      result <- commandInOutGeneric proxy (CommandName "DevVoid") CommandVoid
       putStrLn $ "result of DevVoid command: " <> show result

@@ -6,6 +6,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
+-- |
+-- Description : High-level interface to all client-related functions (mostly functions using a Device Proxy)
 module Tango.Client
   ( withDeviceProxy,
     checkResult,
@@ -111,7 +113,7 @@ import Control.Exception (Exception, bracket, throw)
 import Control.Monad (fail, forM_, mapM_, void, when, (>>=))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Bool (Bool, (||))
+import Data.Bool (Bool (False, True), otherwise, (||))
 import Data.Char (Char)
 import Data.Either (Either (Left, Right))
 import Data.Eq (Eq ((==)), (/=))
@@ -121,7 +123,7 @@ import Data.Functor (Functor, (<$>))
 import Data.Int (Int, Int16, Int32, Int64)
 import Data.List (drop, length, singleton, splitAt)
 import Data.Maybe (Maybe (Just, Nothing), listToMaybe, maybe)
-import Data.Ord (max)
+import Data.Ord (max, (>))
 import Data.Semigroup ((<>))
 import Data.String (String, unlines)
 import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, strip, unpack)
@@ -222,6 +224,15 @@ tangoUrlFromText url =
 -- This just looks nicer because not a pointer
 type DeviceProxy = DeviceProxyPtr
 
+boolToCBool :: Bool -> CBool
+boolToCBool True = 1
+boolToCBool False = 0
+
+cboolToBool :: CBool -> Bool
+cboolToBool x
+  | x > 0 = True
+  | otherwise = False
+
 newDeviceProxy :: forall m. (UnliftIO.MonadUnliftIO m) => TangoUrl -> m DeviceProxy
 newDeviceProxy (TangoUrl url) = do
   alloca $ \proxyPtrPtr -> do
@@ -298,15 +309,15 @@ writeImageAttribute proxyPtr (AttributeName attributeName) newImage tangoType in
 
 writeBoolAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Bool -> m ()
 writeBoolAttribute proxyPtr attributeName newValue =
-  writeScalarAttribute proxyPtr attributeName (if newValue then 1 else 0) HaskellDevBoolean HaskellAttributeDataBoolArray
+  writeScalarAttribute proxyPtr attributeName (boolToCBool newValue) HaskellDevBoolean HaskellAttributeDataBoolArray
 
 writeBoolSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> [Bool] -> m ()
 writeBoolSpectrumAttribute proxyPtr attributeName newValues =
-  writeSpectrumAttribute proxyPtr attributeName ((\x -> if x then 1 else 0) <$> newValues) HaskellDevBoolean HaskellAttributeDataBoolArray
+  writeSpectrumAttribute proxyPtr attributeName (boolToCBool <$> newValues) HaskellDevBoolean HaskellAttributeDataBoolArray
 
 writeBoolImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Image Bool -> m ()
 writeBoolImageAttribute proxyPtr attributeName newImage =
-  writeImageAttribute proxyPtr attributeName ((\x -> if x then 1 else 0) <$> newImage) HaskellDevBoolean HaskellAttributeDataBoolArray
+  writeImageAttribute proxyPtr attributeName (boolToCBool <$> newImage) HaskellDevBoolean HaskellAttributeDataBoolArray
 
 writeShortAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Int16 -> m ()
 writeShortAttribute proxyPtr attributeName newValue =
@@ -554,13 +565,13 @@ extractBool (HaskellAttributeDataBoolArray a) = Just a
 extractBool _ = Nothing
 
 readBoolAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Bool)
-readBoolAttribute = readAttributeSimple extractBool (convertGenericScalar (/= 0))
+readBoolAttribute = readAttributeSimple extractBool (convertGenericScalar cboolToBool)
 
 readBoolSpectrumAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Bool])
-readBoolSpectrumAttribute = readAttributeSimple extractBool (convertGenericSpectrum (/= 0))
+readBoolSpectrumAttribute = readAttributeSimple extractBool (convertGenericSpectrum cboolToBool)
 
 readBoolImageAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Bool))
-readBoolImageAttribute = readAttributeSimple extractBool (convertGenericImage (/= 0))
+readBoolImageAttribute = readAttributeSimple extractBool (convertGenericImage cboolToBool)
 
 -- | Read a string attribute and decode it into a text
 readStringAttribute :: (UnliftIO.MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Text)
@@ -729,28 +740,28 @@ readEnumImageAttribute = readAttributeSimple extractEnum (convertGenericImage (t
 
 newtype CommandName = CommandName Text
 
-data CommandData t
+data CommandData
   = CommandVoid
   | CommandBool !Bool
-  | CommandInt16 !Int16
-  | CommandWord16 !Word16
+  | CommandShort !Int16
+  | CommandUShort !Word16
   | CommandInt64 !Int64
   | CommandWord64 !Word64
   | CommandFloat !Float
   | CommandDouble !Double
-  | CommandText !Text
+  | CommandString !Text
   | CommandState !HaskellTangoDevState
-  | CommandEnum !t
+  | CommandEnum !Int16
   | CommandListBool ![Bool]
-  | CommandListInt16 ![Int16]
-  | CommandListWord16 ![Word16]
+  | CommandListShort ![Int16]
+  | CommandListUShort ![Word16]
   | CommandListInt64 ![Int64]
   | CommandListWord64 ![Word64]
   | CommandListLong64 ![Int64]
   | CommandListULong64 ![Word64]
   | CommandListFloat ![Float]
   | CommandListDouble ![Double]
-  | CommandListText ![Text]
+  | CommandListString ![Text]
   | CommandListState ![HaskellTangoDevState]
   deriving (Show)
 
@@ -768,16 +779,16 @@ withVarArray b f = withArray b (f . HaskellTangoVarArray (fromIntegral (length b
 newCStringText :: (UnliftIO.MonadUnliftIO m) => Text -> m CString
 newCStringText = newCString . unpack
 
-withRawCommandData :: (UnliftIO.MonadUnliftIO m, Enum t) => CommandData t -> (Ptr HaskellCommandData -> m a) -> m a
+withRawCommandData :: (UnliftIO.MonadUnliftIO m) => CommandData -> (Ptr HaskellCommandData -> m a) -> m a
 withRawCommandData CommandVoid f = with (HaskellCommandData HaskellDevVoid HaskellCommandVoid) f
-withRawCommandData (CommandBool b) f = with (HaskellCommandData HaskellDevBoolean (HaskellCommandBool (if b then 1 else 0))) f
-withRawCommandData (CommandInt16 b) f = with (HaskellCommandData HaskellDevShort (HaskellCommandInt16 (fromIntegral b))) f
-withRawCommandData (CommandWord16 b) f = with (HaskellCommandData HaskellDevUShort (HaskellCommandUInt16 (fromIntegral b))) f
+withRawCommandData (CommandBool b) f = with (HaskellCommandData HaskellDevBoolean (HaskellCommandBool (boolToCBool b))) f
+withRawCommandData (CommandShort b) f = with (HaskellCommandData HaskellDevShort (HaskellCommandShort (fromIntegral b))) f
+withRawCommandData (CommandUShort b) f = with (HaskellCommandData HaskellDevUShort (HaskellCommandUShort (fromIntegral b))) f
 withRawCommandData (CommandInt64 b) f = with (HaskellCommandData HaskellDevShort (HaskellCommandULong64 (fromIntegral b))) f
 withRawCommandData (CommandWord64 b) f = with (HaskellCommandData HaskellDevUShort (HaskellCommandLong64 (fromIntegral b))) f
 withRawCommandData (CommandFloat b) f = with (HaskellCommandData HaskellDevFloat (HaskellCommandFloat (realToFrac b))) f
 withRawCommandData (CommandDouble b) f = with (HaskellCommandData HaskellDevDouble (HaskellCommandDouble (realToFrac b))) f
-withRawCommandData (CommandText t) f =
+withRawCommandData (CommandString t) f =
   UnliftIO.bracket
     (newCString (unpack t))
     free
@@ -786,15 +797,15 @@ withRawCommandData (CommandState b) f = with (HaskellCommandData HaskellDevState
 withRawCommandData (CommandEnum b) f = with (HaskellCommandData HaskellDevEnum (HaskellCommandDevEnum (fromIntegral (fromEnum b)))) f
 withRawCommandData (CommandListBool b) f =
   withVarArray
-    ((\x -> if x then 1 else 0) <$> b)
+    (boolToCBool <$> b)
     \varList ->
       with (HaskellCommandData HaskellDevVarBooleanArray (HaskellCommandVarBool varList)) f
-withRawCommandData (CommandListInt16 b) f =
+withRawCommandData (CommandListShort b) f =
   withVarArray
     (fromIntegral <$> b)
     \varList ->
       with (HaskellCommandData HaskellDevVarShortArray (HaskellCommandVarShort varList)) f
-withRawCommandData (CommandListWord16 b) f =
+withRawCommandData (CommandListUShort b) f =
   withVarArray
     (fromIntegral <$> b)
     \varList ->
@@ -829,7 +840,7 @@ withRawCommandData (CommandListDouble b) f =
     (realToFrac <$> b)
     \varList ->
       with (HaskellCommandData HaskellDevVarDoubleArray (HaskellCommandVarDouble varList)) f
-withRawCommandData (CommandListText texts) f =
+withRawCommandData (CommandListString texts) f =
   UnliftIO.bracket
     (traverse newCStringText texts)
     (traverse free)
@@ -848,23 +859,23 @@ tangoVarArrayToList :: (UnliftIO.MonadUnliftIO m, Storable a) => HaskellTangoVar
 tangoVarArrayToList (HaskellTangoVarArray {varArrayLength, varArrayValues}) =
   peekArray (fromIntegral varArrayLength) varArrayValues
 
-fromRawCommandData :: (UnliftIO.MonadUnliftIO m, Enum t) => HaskellCommandData -> m (Maybe (CommandData t))
+fromRawCommandData :: (UnliftIO.MonadUnliftIO m) => HaskellCommandData -> m (Maybe CommandData)
 fromRawCommandData (HaskellCommandData {tangoCommandData}) =
   case tangoCommandData of
-    HaskellCommandVoid -> pure $ Just $ CommandVoid
-    HaskellCommandBool cbool -> pure $ Just $ CommandBool $ cbool /= 0
-    HaskellCommandInt16 v -> pure $ Just $ CommandInt16 $ fromIntegral v
-    HaskellCommandUInt16 v -> pure $ Just $ CommandWord16 $ fromIntegral v
+    HaskellCommandVoid -> pure $ Just CommandVoid
+    HaskellCommandBool cbool -> pure $ Just $ CommandBool $ cboolToBool cbool
+    HaskellCommandShort v -> pure $ Just $ CommandShort $ fromIntegral v
+    HaskellCommandUShort v -> pure $ Just $ CommandUShort $ fromIntegral v
     HaskellCommandFloat v -> pure $ Just $ CommandFloat $ realToFrac v
     HaskellCommandDouble v -> pure $ Just $ CommandDouble $ realToFrac v
-    HaskellCommandCString v -> Just . CommandText . pack <$> peekCString v
+    HaskellCommandCString v -> Just . CommandString . pack <$> peekCString v
     HaskellCommandLong64 v -> pure $ Just $ CommandInt64 $ fromIntegral v
     HaskellCommandDevState v -> pure $ Just $ CommandState v
     HaskellCommandULong64 v -> pure $ Just $ CommandWord64 $ fromIntegral v
     HaskellCommandDevEnum v -> pure $ Just $ CommandEnum $ toEnum $ fromIntegral v
-    HaskellCommandVarBool a -> Just . CommandListBool . ((/= 0) <$>) <$> tangoVarArrayToList a
-    HaskellCommandVarShort a -> Just . CommandListInt16 . (fromIntegral <$>) <$> tangoVarArrayToList a
-    HaskellCommandVarUShort a -> Just . CommandListWord16 . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarBool a -> Just . CommandListBool . (cboolToBool <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarShort a -> Just . CommandListShort . (fromIntegral <$>) <$> tangoVarArrayToList a
+    HaskellCommandVarUShort a -> Just . CommandListUShort . (fromIntegral <$>) <$> tangoVarArrayToList a
     HaskellCommandVarLong a -> Just . CommandListInt64 . (fromIntegral <$>) <$> tangoVarArrayToList a
     HaskellCommandVarULong a -> Just . CommandListWord64 . (fromIntegral <$>) <$> tangoVarArrayToList a
     HaskellCommandVarLong64 a -> Just . CommandListLong64 . (fromIntegral <$>) <$> tangoVarArrayToList a
@@ -874,11 +885,11 @@ fromRawCommandData (HaskellCommandData {tangoCommandData}) =
     HaskellCommandVarCString strings -> do
       stringsAsList <- tangoVarArrayToList strings
       texts <- traverse peekCStringText stringsAsList
-      pure (Just (CommandListText texts))
+      pure (Just (CommandListString texts))
     HaskellCommandVarDevState a -> Just . CommandListState <$> tangoVarArrayToList a
     _ -> pure Nothing
 
-commandInOutGeneric :: (UnliftIO.MonadUnliftIO m, Enum t, Enum u) => DeviceProxyPtr -> CommandName -> CommandData t -> m (CommandData u)
+commandInOutGeneric :: (UnliftIO.MonadUnliftIO m) => DeviceProxyPtr -> CommandName -> CommandData -> m CommandData
 commandInOutGeneric proxyPtr (CommandName commandName) in' =
   liftIO $
     withCString (unpack commandName) $
