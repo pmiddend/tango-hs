@@ -32,6 +32,9 @@ main =
       enumResult :: TangoValue Int16 <- readEnumAttribute proxy (AttributeName "enum_scalar")
       putStrLn $ "enum_scalar is " <> show enumResult
 
+      integralResult :: TangoValue Int <- readIntegralAttribute proxy (AttributeName "long_scalar")
+      putStrLn $ "long_scalar as integral attribute is " <> show integralResult
+
       attributeList <- getConfigsForAttributes proxy [AttributeName "enum_scalar_ro"]
       putStrLn $ "attribute description for \"enum_scalar_ro\": " <> show attributeList
 

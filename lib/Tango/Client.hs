@@ -10,6 +10,17 @@
 -- Description : High-level interface to all client-related functions (mostly functions using a Device Proxy)
 --
 -- = General Notes
+-- == Strictness
+--
+-- Record values are generally /strict/.
+--
+-- == Haskell Types
+--
+-- We're not using and C types when it would be user-facing. Texts are
+-- encoded/decoded as 'Data.Text'. Numeric types are converted to
+-- 'Int', unless it's about actual payload data (attributes and
+-- commands), where the appropriately sized types are used.
+--
 -- == Properties
 --
 -- The property retrieval API for Tango is elaborate, supporting different data types. We condensed this down to
@@ -33,8 +44,11 @@ module Tango.Client
     AttributeName (AttributeName),
     AttributeInfo (..),
     getConfigsForAttributes,
+    getConfigForAttribute,
     TangoValue (TangoValue),
     Image (Image, imageContent, imageDimX, imageDimY),
+    readIntegralAttribute,
+    writeIntegralAttribute,
     readBoolAttribute,
     readBoolSpectrumAttribute,
     readBoolImageAttribute,
@@ -141,10 +155,10 @@ import Data.Char (Char)
 import Data.Either (Either (Left, Right))
 import Data.Eq (Eq ((==)), (/=))
 import Data.Foldable (any)
-import Data.Function (id, ($), (.))
+import Data.Function (const, id, ($), (.))
 import Data.Functor (Functor, (<$>))
 import Data.Int (Int, Int16, Int32, Int64)
-import Data.List (drop, length, singleton, splitAt)
+import Data.List (drop, head, length, singleton, splitAt)
 import Data.Maybe (Maybe (Just, Nothing), listToMaybe, maybe)
 import Data.Ord (max, (>))
 import Data.Semigroup ((<>))
@@ -346,6 +360,25 @@ writeImageAttribute proxyPtr (AttributeName attributeName) newImage tangoType in
           }
       )
       $ \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+
+-- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
+writeIntegralAttribute :: (MonadUnliftIO m, Integral i) => DeviceProxyPtr -> AttributeName -> i -> m ()
+writeIntegralAttribute proxyPtr attributeName newValue = do
+  config <- getConfigForAttribute proxyPtr attributeName
+  case attributeInfoDataType config of
+    HaskellDevShort ->
+      writeShortAttribute proxyPtr attributeName (fromIntegral newValue)
+    HaskellDevUShort ->
+      writeUShortAttribute proxyPtr attributeName (fromIntegral newValue)
+    HaskellDevLong ->
+      writeLongAttribute proxyPtr attributeName (fromIntegral newValue)
+    HaskellDevULong ->
+      writeULongAttribute proxyPtr attributeName (fromIntegral newValue)
+    HaskellDevLong64 ->
+      writeLong64Attribute proxyPtr attributeName (fromIntegral newValue)
+    HaskellDevULong64 ->
+      writeULong64Attribute proxyPtr attributeName (fromIntegral newValue)
+    _ -> error $ "tried to write integral attribute " <> show attributeName <> " but the attribute is not an integral type"
 
 writeBoolAttribute :: (MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Bool -> m ()
 writeBoolAttribute proxyPtr attributeName newValue =
@@ -599,6 +632,25 @@ data Image a = Image
     imageDimY :: !Int
   }
   deriving (Show, Functor)
+
+-- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert to 'Int'
+readIntegralAttribute :: forall m i. (MonadUnliftIO m, Integral i) => DeviceProxy -> AttributeName -> m (TangoValue i)
+readIntegralAttribute = readAttributeGeneral extract
+  where
+    extractHelper a = do
+      arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+      case fromIntegral <$> arrayElements of
+        [first, second] -> pure (Just (TangoValue first second))
+        _ -> pure Nothing
+    extract :: HaskellAttributeData -> IO (Maybe (TangoValue i))
+    extract ad = case tangoAttributeData ad of
+      (HaskellAttributeDataShortArray a) -> extractHelper a
+      (HaskellAttributeDataUShortArray a) -> extractHelper a
+      (HaskellAttributeDataLongArray a) -> extractHelper a
+      (HaskellAttributeDataULongArray a) -> extractHelper a
+      (HaskellAttributeDataLong64Array a) -> extractHelper a
+      (HaskellAttributeDataULong64Array a) -> extractHelper a
+      _ -> pure Nothing
 
 extractBool :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CBool)
 extractBool (HaskellAttributeDataBoolArray a) = Just a
@@ -961,6 +1013,7 @@ throwTangoException desc = do
   str <- newCString (unpack desc)
   liftIO $ tango_throw_exception str
 
+-- | Information for a single attribute (for spectrum and images as well, see the dimensions)
 data AttributeInfo = AttributeInfo
   { attributeInfoWritable :: !HaskellAttrWriteType,
     attributeInfoDataFormat :: !HaskellDataFormat,
@@ -983,7 +1036,7 @@ data AttributeInfo = AttributeInfo
   }
   deriving (Show)
 
-convertAttributeInfo :: RawCommon.HaskellAttributeInfo -> IO AttributeInfo
+convertAttributeInfo :: forall m. (MonadUnliftIO m) => RawCommon.HaskellAttributeInfo -> m AttributeInfo
 convertAttributeInfo ai = do
   description <- peekCStringText (RawCommon.attributeInfoDescription ai)
   label <- peekCStringText (RawCommon.attributeInfoLabel ai)
@@ -1019,19 +1072,25 @@ convertAttributeInfo ai = do
       (RawCommon.attributeInfoDispLevel ai)
       enumLabelsList
 
-getConfigsForAttributes :: DeviceProxy -> [AttributeName] -> IO [AttributeInfo]
+-- | Get information on a single attribute (this uses 'getConfigsForAttributes' internally)
+getConfigForAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m AttributeInfo
+getConfigForAttribute proxyPtr attributeName =
+  head <$> liftIO (getConfigsForAttributes proxyPtr [attributeName])
+
+-- | Get information for a set of attributes (see 'getConfigForAttribute' for a single attribute)
+getConfigsForAttributes :: forall m. (MonadUnliftIO m) => DeviceProxy -> [AttributeName] -> m [AttributeInfo]
 getConfigsForAttributes deviceProxyPtr attributeNames = do
-  let attributeNameToCString :: AttributeName -> IO CString
+  let attributeNameToCString :: AttributeName -> m CString
       attributeNameToCString (AttributeName t) = newCString (unpack t)
-  bracket (traverse attributeNameToCString attributeNames) (traverse free) \cstringList ->
+  UnliftIO.bracket (traverse attributeNameToCString attributeNames) (traverse free) \cstringList ->
     withArray cstringList \cstringPtr ->
       with (HaskellTangoVarArray (fromIntegral (length attributeNames)) cstringPtr) \varArrayPtr ->
         with (HaskellAttributeInfoList 0 nullPtr) \outputPtr ->
-          bracket
-            (checkResult (tango_get_attribute_config deviceProxyPtr varArrayPtr outputPtr))
-            (\_ -> tango_free_AttributeInfoList outputPtr)
+          UnliftIO.bracket
+            (checkResult (liftIO (tango_get_attribute_config deviceProxyPtr varArrayPtr outputPtr)))
+            (\_ -> liftIO (tango_free_AttributeInfoList outputPtr))
             \_ -> do
-              outputPeeked <- peek outputPtr
+              outputPeeked <- liftIO (peek outputPtr)
               elements <- peekArray (fromIntegral (attributeInfoListLength outputPeeked)) (attributeInfoListSequence outputPeeked)
               traverse convertAttributeInfo elements
 
@@ -1143,4 +1202,4 @@ unlockDevice = checkResult . liftIO . tango_unlock
 
 -- | Execute the given action with a locked device
 withLocked :: (MonadUnliftIO m) => DeviceProxy -> m () -> m ()
-withLocked devicePtr f = UnliftIO.bracket (lockDevice devicePtr) (\_ -> unlockDevice devicePtr) (\_ -> f)
+withLocked devicePtr f = UnliftIO.bracket (lockDevice devicePtr) (\_ -> unlockDevice devicePtr) (const f)
