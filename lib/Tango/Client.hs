@@ -9,33 +9,32 @@
 -- |
 -- Description : High-level interface to all client-related functions (mostly functions using a Device Proxy)
 --
--- Properties
+-- = General Notes
+-- == Properties
 --
 -- The property retrieval API for Tango is elaborate, supporting different data types. We condensed this down to
 -- retrieving lists of strings. Conversion needs to happen on the Haskell side for now.
 module Tango.Client
-  ( withDeviceProxy,
-    checkResult,
-    getConfigsForAttributes,
-    AttributeInfo (..),
-    commandInVoidOutVoid,
-    getDeviceProperties,
-    putDeviceProperties,
-    deleteDeviceProperties,
-    PropertyName (..),
+  ( -- * Basics and initialization
+    DeviceProxyPtr,
+    TangoUrl,
+    parseTangoUrl,
+    withDeviceProxy,
+    newDeviceProxy,
+    deleteDeviceProxy,
+    TangoException (TangoException),
     HaskellDevFailed (HaskellDevFailed),
-    CommandData (..),
-    TangoValue (TangoValue),
-    commandInOutGeneric,
-    commandInEnumOutGeneric,
-    commandInGenericOutEnum,
-    Image (Image, imageContent, imageDimX, imageDimY),
     devFailedDesc,
-    throwTangoException,
     devFailedReason,
     devFailedOrigin,
     devFailedSeverity,
-    newDeviceProxy,
+
+    -- * Attributes
+    AttributeName (AttributeName),
+    AttributeInfo (..),
+    getConfigsForAttributes,
+    TangoValue (TangoValue),
+    Image (Image, imageContent, imageDimX, imageDimY),
     readBoolAttribute,
     readBoolSpectrumAttribute,
     readBoolImageAttribute,
@@ -108,13 +107,26 @@ module Tango.Client
     writeEnumAttribute,
     writeEnumSpectrumAttribute,
     writeEnumImageAttribute,
-    tangoUrlFromText,
-    DeviceProxyPtr,
+
+    -- * Commands
     CommandName (CommandName),
-    TangoUrl,
-    AttributeName (AttributeName),
+    commandInVoidOutVoid,
+    CommandData (..),
+    commandInOutGeneric,
+    commandInEnumOutGeneric,
+    commandInGenericOutEnum,
+
+    -- * Properties
+    PropertyName (..),
+    getDeviceProperties,
+    putDeviceProperties,
+    deleteDeviceProperties,
     HaskellTangoDevState (..),
-    TangoException (TangoException),
+
+    -- * Various other device-related functions
+    lockDevice,
+    unlockDevice,
+    withLocked,
   )
 where
 
@@ -191,10 +203,12 @@ import Tango.Raw.Common
     tango_get_device_property,
     tango_get_property,
     tango_get_timeout_millis,
+    tango_lock,
     tango_put_device_property,
     tango_read_attribute,
     tango_set_timeout_millis,
     tango_throw_exception,
+    tango_unlock,
     tango_write_attribute,
   )
 import qualified Tango.Raw.Common as RawCommon
@@ -228,10 +242,12 @@ checkResult action = do
     formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse peekCStringText) stackItems
     throw (TangoException formattedStackItems)
 
+-- | Newtype wrapper around a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@. Retrieve via 'parseTangoUrl'
 newtype TangoUrl = TangoUrl Text
 
-tangoUrlFromText :: Text -> Either Text TangoUrl
-tangoUrlFromText url =
+-- | Try to parse a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@.
+parseTangoUrl :: Text -> Either Text TangoUrl
+parseTangoUrl url =
   let tangoUrlFromText' url' =
         let urlComponents = splitOn "/" url'
          in if length urlComponents /= 3 || any null urlComponents
@@ -260,6 +276,9 @@ newDeviceProxy (TangoUrl url) = do
     withCString (unpack url) $ \proxyName -> do
       liftIO $ checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
       liftIO $ peek proxyPtrPtr
+
+deleteDeviceProxy :: forall m. (MonadUnliftIO m) => DeviceProxy -> m ()
+deleteDeviceProxy proxyPtr = liftIO $ checkResult (tango_delete_device_proxy proxyPtr)
 
 withDeviceProxy :: forall m a. (MonadUnliftIO m) => TangoUrl -> (DeviceProxy -> m a) -> m a
 withDeviceProxy (TangoUrl proxyAddress) =
@@ -1113,3 +1132,15 @@ deleteDeviceProperties proxyPtr names =
               with
                 (HaskellDbData (fromIntegral (length names)) dbDatumPtrIn)
                 (checkResult . liftIO . tango_delete_device_property proxyPtr)
+
+-- | Lock the device (see 'withLocked' for an exception-safe version of this)
+lockDevice :: (MonadUnliftIO m) => DeviceProxy -> m ()
+lockDevice = checkResult . liftIO . tango_lock
+
+-- | Unlock the device (see 'withLocked' for an exception-safe version of this)
+unlockDevice :: (MonadUnliftIO m) => DeviceProxy -> m ()
+unlockDevice = checkResult . liftIO . tango_unlock
+
+-- | Execute the given action with a locked device
+withLocked :: (MonadUnliftIO m) => DeviceProxy -> m () -> m ()
+withLocked devicePtr f = UnliftIO.bracket (lockDevice devicePtr) (\_ -> unlockDevice devicePtr) (\_ -> f)

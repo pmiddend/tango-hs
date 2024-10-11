@@ -12,7 +12,7 @@ import Tango.Client
 data ScalarEnum = Label0 | Label1 | Label2 deriving (Enum, Show)
 
 main =
-  case tangoUrlFromText "sys/tg_test/1" of
+  case parseTangoUrl "sys/tg_test/1" of
     Left e -> error "couldn't resolve tango URL"
     Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do
       booleanResult <- readBoolAttribute proxy (AttributeName "boolean_scalar")
