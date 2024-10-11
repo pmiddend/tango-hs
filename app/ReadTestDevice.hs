@@ -57,5 +57,7 @@ main =
       result''' <- commandInOutGeneric proxy (CommandName "DevVarDoubleArray") (CommandListDouble [3.5, 4.0])
       putStrLn $ "result of DevVarDoubleArray [3.5, 4.0] command: " <> show result'''
 
+      putDeviceProperties proxy [(PropertyName "testproperty", ["x", "y"])]
+
       prop <- getDeviceProperties proxy [PropertyName "testproperty"]
       putStrLn $ "properties " <> show prop

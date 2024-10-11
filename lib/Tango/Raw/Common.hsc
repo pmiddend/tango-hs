@@ -159,6 +159,14 @@ devSourceFromInt _ = CacheDev
 -- Whatever type Tango reserves for enumerations
 type CTangoEnum = CShort
 
+data HaskellTangoVarArray a = HaskellTangoVarArray
+  { varArrayLength :: Word32,
+    varArrayValues :: Ptr a
+  }
+  deriving (Show, Generic)
+
+instance (Storable a) => GStorable (HaskellTangoVarArray a)
+
 data HaskellTangoCommandData
   = HaskellCommandVoid
   | HaskellCommandBool !CBool
@@ -872,14 +880,6 @@ data HaskellDbData = HaskellDbData
   deriving (Show, Generic)
 
 instance GStorable HaskellDbData
-
-data HaskellTangoVarArray a = HaskellTangoVarArray
-  { varArrayLength :: Word32,
-    varArrayValues :: Ptr a
-  }
-  deriving (Show, Generic)
-
-instance (Storable a) => GStorable (HaskellTangoVarArray a)
 
 data HaskellCommandInfoList = HaskellCommandInfoList
   { commandInfoLength :: Word32,
