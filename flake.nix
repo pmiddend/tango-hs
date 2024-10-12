@@ -19,10 +19,30 @@
             inherit system;
             overlays = [ tango-controls.overlays.default ];
           };
+          ctango = pkgs.stdenv.mkDerivation
+            {
+              pname = "ctango";
+              version = "1.0";
+
+              src = c_tango/.;
+
+              nativeBuildInputs = with pkgs; [ cmake pkg-config ];
+              buildInputs = with pkgs; [
+                my-cpptango
+                zeromq
+                cppzmq
+                omniorb_4_2
+                libjpeg_turbo
+                libsodium
+              ];
+            };
 
           haskellPackages = pkgs.haskellPackages.override {
             overrides = self: super: {
               log-base = pkgs.haskell.lib.markUnbroken super.log-base;
+              hs-tango = self.callCabal2nix packageName ./. {
+                inherit ctango;
+              };
             };
           };
 
@@ -34,36 +54,19 @@
           my-cpptango = pkgs.cpptango-9_4;
         in
         {
-          packages.${packageName} =
-            haskellPackages.callCabal2nix packageName self {
-              # tango = pkgs.tango-controls-9_4;
-              ctango = self.packages.${system}.ctango;
-            };
+          packages.${packageName} = haskellPackages.hs-tango;
 
           packages.default = self.packages.${system}.${packageName};
 
-          packages.ctango = pkgs.stdenv.mkDerivation {
-            pname = "ctango";
-            version = "1.0";
-
-            src = c_tango/.;
-
-            nativeBuildInputs = with pkgs; [ cmake pkg-config ];
-            buildInputs = with pkgs; [
-              my-cpptango
-              zeromq
-              cppzmq
-              omniorb_4_2
-              libjpeg_turbo
-              libsodium
-            ];
-          };
+          packages.ctango = ctango;
 
           defaultPackage = self.packages.${system}.default;
 
           devShells.default =
-            pkgs.mkShell {
-              buildInputs = with pkgs; [
+            haskellPackages.shellFor {
+              withHoogle = true;
+
+              nativeBuildInputs = with pkgs; [
                 haskellPackages.haskell-language-server # you must build it with your ghc to work
                 ghcid
                 haskellPackages.ormolu
@@ -86,9 +89,7 @@
                 libsodium
                 self.packages.${system}.ctango
               ];
-              # CPPZMQ_INCLUDE = "${pkgs.cppzmq}";
-              # inputsFrom = map (__getAttr "env") (__attrValues self.packages.${system});
-              inputsFrom = [ self.packages.${system}.hs-tango.env ];
+              packages = hpkgs: [ hpkgs.hs-tango ];
             };
           devShell = self.devShells.${system}.default;
         });
