@@ -8,6 +8,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
+-- |
+-- Description : Low-level interface to all Tango functions
 module Tango.Raw.Common
   ( tango_create_device_proxy,
     tango_delete_device_proxy,
