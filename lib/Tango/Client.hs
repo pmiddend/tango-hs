@@ -269,7 +269,6 @@ import Tango.Raw.Common
     tango_set_timeout_millis,
     tango_stop_poll_attribute,
     tango_stop_poll_command,
-    tango_throw_exception,
     tango_unlock,
     tango_write_attribute,
   )
@@ -1182,10 +1181,10 @@ commandInGenericOutEnum proxyPtr commandName in' = do
     CommandShort s -> pure (toEnum (fromIntegral s))
     _ -> error ("command " <> show commandName <> " was supposed to return a short (for enums), but returned " <> show result)
 
-throwTangoException :: (MonadIO m) => Text -> m ()
-throwTangoException desc = do
-  str <- newCString (unpack desc)
-  liftIO $ tango_throw_exception str
+-- throwTangoException :: (MonadIO m) => Text -> m ()
+-- throwTangoException desc = do
+--   str <- newCString (unpack desc)
+--   liftIO $ tango_throw_exception str
 
 -- | Information for a single attribute (for spectrum and images as well, see the dimensions)
 data AttributeInfo = AttributeInfo
