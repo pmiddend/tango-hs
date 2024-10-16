@@ -49,8 +49,16 @@ module Tango.Client
     Image (Image, imageContent, imageDimX, imageDimY),
     readIntegralAttribute,
     writeIntegralAttribute,
+    readIntegralSpectrumAttribute,
+    writeIntegralSpectrumAttribute,
+    readIntegralImageAttribute,
+    writeIntegralImageAttribute,
     readRealAttribute,
     writeRealAttribute,
+    readRealSpectrumAttribute,
+    writeRealSpectrumAttribute,
+    readRealImageAttribute,
+    writeRealImageAttribute,
     readBoolAttribute,
     readBoolSpectrumAttribute,
     readBoolImageAttribute,
@@ -382,6 +390,55 @@ writeIntegralAttribute proxyPtr attributeName newValue = do
       writeULong64Attribute proxyPtr attributeName (fromIntegral newValue)
     _ -> error $ "tried to write integral attribute " <> show attributeName <> " but the attribute is not an integral type"
 
+-- | Read a spectrum attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
+writeIntegralSpectrumAttribute :: (MonadUnliftIO m, Integral i) => DeviceProxyPtr -> AttributeName -> [i] -> m ()
+writeIntegralSpectrumAttribute proxyPtr attributeName newValues = do
+  config <- getConfigForAttribute proxyPtr attributeName
+  case attributeInfoDataType config of
+    HaskellDevVarShortArray ->
+      writeShortSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarUShortArray ->
+      writeUShortSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarLongArray ->
+      writeLongSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarULongArray ->
+      writeULongSpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarLong64Array ->
+      writeLong64SpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarULong64Array ->
+      writeULong64SpectrumAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    _ -> error $ "tried to write integral attribute " <> show attributeName <> " but the attribute is not an integral type"
+
+-- | Read a spectrum attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
+writeIntegralImageAttribute :: (MonadUnliftIO m, Integral i) => DeviceProxyPtr -> AttributeName -> Image i -> m ()
+writeIntegralImageAttribute proxyPtr attributeName newValues = do
+  config <- getConfigForAttribute proxyPtr attributeName
+  case attributeInfoDataType config of
+    HaskellDevVarShortArray ->
+      writeShortImageAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarUShortArray ->
+      writeUShortImageAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarLongArray ->
+      writeLongImageAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarULongArray ->
+      writeULongImageAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarLong64Array ->
+      writeLong64ImageAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    HaskellDevVarULong64Array ->
+      writeULong64ImageAttribute proxyPtr attributeName (fromIntegral <$> newValues)
+    _ -> error $ "tried to write integral attribute " <> show attributeName <> " but the attribute is not an integral type"
+
+-- | Read a spectrum attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
+writeRealImageAttribute :: (MonadUnliftIO m, Real i, Fractional i) => DeviceProxyPtr -> AttributeName -> Image i -> m ()
+writeRealImageAttribute proxyPtr attributeName newValues = do
+  config <- getConfigForAttribute proxyPtr attributeName
+  case attributeInfoDataType config of
+    HaskellDevFloat ->
+      writeFloatImageAttribute proxyPtr attributeName (realToFrac <$> newValues)
+    HaskellDevDouble ->
+      writeDoubleImageAttribute proxyPtr attributeName (realToFrac <$> newValues)
+    _ -> error $ "tried to write real attribute " <> show attributeName <> " but the attribute is not a real type"
+
 -- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
 writeRealAttribute :: (MonadUnliftIO m, Fractional i, Real i) => DeviceProxyPtr -> AttributeName -> i -> m ()
 writeRealAttribute proxyPtr attributeName newValue = do
@@ -391,6 +448,17 @@ writeRealAttribute proxyPtr attributeName newValue = do
       writeFloatAttribute proxyPtr attributeName (realToFrac newValue)
     HaskellDevDouble ->
       writeDoubleAttribute proxyPtr attributeName (realToFrac newValue)
+    _ -> error $ "tried to write real attribute " <> show attributeName <> " but the attribute is not a real type"
+
+-- | Read a spectrum attribute irrespective of the concrete real type. This just uses 'realToFrac' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
+writeRealSpectrumAttribute :: (MonadUnliftIO m, Fractional i, Real i, Show i) => DeviceProxyPtr -> AttributeName -> [i] -> m ()
+writeRealSpectrumAttribute proxyPtr attributeName newValues = do
+  config <- getConfigForAttribute proxyPtr attributeName
+  case attributeInfoDataType config of
+    HaskellDevVarFloatArray ->
+      writeFloatSpectrumAttribute proxyPtr attributeName (realToFrac <$> newValues)
+    HaskellDevVarDoubleArray ->
+      writeDoubleSpectrumAttribute proxyPtr attributeName (realToFrac <$> newValues)
     _ -> error $ "tried to write real attribute " <> show attributeName <> " but the attribute is not a real type"
 
 writeBoolAttribute :: (MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Bool -> m ()
@@ -614,6 +682,19 @@ readAttributeSimple extractValue convertValue proxyPtr attributeName = do
     (first : second : rest) -> convertValue attributeData (AtLeastTwo first second rest)
     _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a value array of length at least two, but got " <> show arrayElements
 
+readAttributeSimple' ::
+  (MonadIO m, Show a) =>
+  (HaskellTangoAttributeData -> IO (Maybe [a])) ->
+  (HaskellAttributeData -> AtLeastTwo a -> m b) ->
+  DeviceProxy ->
+  AttributeName ->
+  m b
+readAttributeSimple' extractValue convertValue proxyPtr attributeName = do
+  (attributeData, tangoArray) <- readAttributeGeneral (\d -> ((d,) <$>) <$> extractValue (tangoAttributeData d)) proxyPtr attributeName
+  case tangoArray of
+    (first : second : rest) -> convertValue attributeData (AtLeastTwo first second rest)
+    _ -> error $ "couldn't read attribute " <> show attributeName <> ": expected a value array of length at least two, but got " <> show tangoArray
+
 convertGenericScalar :: (Applicative f) => (a -> b) -> HaskellAttributeData -> AtLeastTwo a -> f (TangoValue b)
 convertGenericScalar f _ (AtLeastTwo first second _) = pure (TangoValue (f first) (f second))
 
@@ -623,9 +704,25 @@ convertGenericSpectrum f (HaskellAttributeData {dimX}) (AtLeastTwo first second 
       (readValue, writeValue) = splitAt (fromIntegral dimX) wholeList
    in pure (TangoValue readValue writeValue)
 
+convertGenericSpectrum' :: (Applicative f) => HaskellAttributeData -> AtLeastTwo a -> f (TangoValue [a])
+convertGenericSpectrum' (HaskellAttributeData {dimX}) (AtLeastTwo first second remainder) =
+  let wholeList = first : second : remainder
+      (readValue, writeValue) = splitAt (fromIntegral dimX) wholeList
+   in pure (TangoValue readValue writeValue)
+
 convertGenericImage :: (Applicative f) => (a1 -> a2) -> HaskellAttributeData -> AtLeastTwo a1 -> f (TangoValue (Image a2))
 convertGenericImage f (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first second remainder) =
   let wholeList = f <$> (first : second : remainder)
+      (readValue, writeValue) = splitAt (fromIntegral (dimX * dimY)) wholeList
+   in pure
+        ( TangoValue
+            (Image readValue (fromIntegral dimX) (fromIntegral dimY))
+            (Image writeValue (fromIntegral dimX) (fromIntegral dimY))
+        )
+
+convertGenericImage' :: (Applicative f) => HaskellAttributeData -> AtLeastTwo a1 -> f (TangoValue (Image a1))
+convertGenericImage' (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first second remainder) =
+  let wholeList = first : second : remainder
       (readValue, writeValue) = splitAt (fromIntegral (dimX * dimY)) wholeList
    in pure
         ( TangoValue
@@ -647,39 +744,43 @@ data Image a = Image
   deriving (Show, Functor)
 
 -- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert to 'Int'
-readIntegralAttribute :: forall m i. (MonadUnliftIO m, Integral i) => DeviceProxy -> AttributeName -> m (TangoValue i)
-readIntegralAttribute = readAttributeGeneral extract
-  where
-    extractHelper a = do
-      arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
-      case fromIntegral <$> arrayElements of
-        [first, second] -> pure (Just (TangoValue first second))
-        _ -> pure Nothing
-    extract :: HaskellAttributeData -> IO (Maybe (TangoValue i))
-    extract ad = case tangoAttributeData ad of
-      (HaskellAttributeDataShortArray a) -> extractHelper a
-      (HaskellAttributeDataUShortArray a) -> extractHelper a
-      (HaskellAttributeDataLongArray a) -> extractHelper a
-      (HaskellAttributeDataULongArray a) -> extractHelper a
-      (HaskellAttributeDataLong64Array a) -> extractHelper a
-      (HaskellAttributeDataULong64Array a) -> extractHelper a
-      _ -> pure Nothing
+readIntegralAttribute :: forall m i. (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
+readIntegralAttribute = readAttributeSimple' extractIntegral (convertGenericScalar id)
+
+extractIntegral :: (Integral i, MonadUnliftIO m) => HaskellTangoAttributeData -> m (Maybe [i])
+extractIntegral (HaskellAttributeDataLongArray a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (fromIntegral <$> arrayElements)
+extractIntegral _ = pure Nothing
+
+-- | Read a spectrum attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally
+readIntegralSpectrumAttribute :: (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
+readIntegralSpectrumAttribute = readAttributeSimple' extractIntegral convertGenericSpectrum'
+
+-- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally
+readIntegralImageAttribute :: (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
+readIntegralImageAttribute = readAttributeSimple' extractIntegral convertGenericImage'
+
+extractReal :: (Real i, Fractional i, MonadUnliftIO m) => HaskellTangoAttributeData -> m (Maybe [i])
+extractReal (HaskellAttributeDataDoubleArray a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (realToFrac <$> arrayElements)
+extractReal (HaskellAttributeDataFloatArray a) = do
+  arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+  pure $ Just (realToFrac <$> arrayElements)
+extractReal _ = pure Nothing
 
 -- | Read an attribute irrespective of the concrete real type. This just uses 'realToFrac' internally to convert to 'Int'
-readRealAttribute :: forall m i. (MonadUnliftIO m, Fractional i, Real i) => DeviceProxy -> AttributeName -> m (TangoValue i)
-readRealAttribute = readAttributeGeneral extract
-  where
-    extractHelper :: forall b. (Storable b, Real b, Fractional b) => HaskellTangoVarArray b -> IO (Maybe (TangoValue i))
-    extractHelper a = do
-      arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
-      case realToFrac <$> arrayElements of
-        [first, second] -> pure (Just (TangoValue first second))
-        _ -> pure Nothing
-    extract :: HaskellAttributeData -> IO (Maybe (TangoValue i))
-    extract ad = case tangoAttributeData ad of
-      (HaskellAttributeDataDoubleArray a) -> extractHelper a
-      (HaskellAttributeDataFloatArray a) -> extractHelper a
-      _ -> pure Nothing
+readRealAttribute :: forall m i. (MonadUnliftIO m, Fractional i, Real i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
+readRealAttribute = readAttributeSimple' extractReal (convertGenericScalar id)
+
+-- | Read a spectrum attribute irrespective of the concrete real element type. This just uses 'realToFrac' internally
+readRealSpectrumAttribute :: (MonadUnliftIO m, Real i, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
+readRealSpectrumAttribute = readAttributeSimple' extractReal convertGenericSpectrum'
+
+-- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally
+readRealImageAttribute :: (MonadUnliftIO m, Real i, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
+readRealImageAttribute = readAttributeSimple' extractReal convertGenericImage'
 
 extractBool :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CBool)
 extractBool (HaskellAttributeDataBoolArray a) = Just a
