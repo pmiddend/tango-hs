@@ -1,13 +1,88 @@
 * hs-tango
 
+** How to install
+*** General instructions
 
+These Haskell bindings work by compiling a separate C library "ctango" — which maps C++ constructs to C — and then compiling/linking against this library with Haskell FFI machinery. It uses pkg-config as a glue between the Haskell code and ctango.
 
-* What's missing
+This means you have to compile ctango first, and then build this package with cabal. ctango is located under the =c_tango/= directory in this repository. It's built using cmake. This means in general, you just have to execute the following:
+
+#+begin_src shell
+cd c_tango
+mkdir build
+cd build
+cmake -DCMAKE_INSTALL_PREFIX=$foo ..
+make install
+#+end_src
+
+where =$foo= will be wherever you want to install ctango (it could be =$HOME/local= or something).
+
+The =make install= command will compile ctango and put it in a directory hierarchy below =$foo=. The important file for you is =ctango.pc=, which is the pkg-config description of the package. This is located in =$foo/lib/pkgconfig=. So to build =tango-hs= afterwards, you issue:
+
+#+begin_src shell
+# to to back to the repository path from c_tango/
+cd ../
+
+PKG_CONFIG_PATH=$foo/lib/pkgconfig cabal build
+#+end_src
+
+This will build the library.
+
+In general, the [[https://tango-controls.readthedocs.io/en/latest/installation/tango-on-linux.html#debian-ubuntu][Tango documentation]] has instructions on how to install Tango for different operating systems.
+*** On Debian
+
+On Debian, you only need two dependencies: =cmake=, and =libtango-dev=:
+
+#+begin_src shell
+sudo apt install cmake libtango-dev
+#+end_src
+
+Then follow the generic installation instructions
+*** With Nix
+
+If you're using the Nix package manager, installation is a bit easier. You have to enable flakes, and then use the accompanying =flake.nix=. To get Tango, it uses the [[https://gitlab.desy.de/cfel-sc-public/tango-flake][tango-flake]] from your truly. You can simply clone the repository, do =nix develop=, and then =cabal build=.
+** Usage
+*** Client
+
+There is haddock documentation available. But just to illustrate how to use the library, here's a little client example:
+
+#+begin_src haskell
+{-# LANGUAGE OverloadedStrings #-}
+
+module Main where
+
+import Tango.Client(
+  parseTangoUrl,
+  withDeviceProxy,
+  getTimeout,
+  AttributeName(..),
+  readBoolAttribute,
+  readBoolSpectrumAttribute
+)
+
+main :: IO ()
+main =
+  case parseTangoUrl "sys/tg_test/1" of
+    Left e -> error "couldn't resolve tango URL"
+    Right deviceAddress -> withDeviceProxy deviceAddress $ \proxy -> do
+      timeout <- getTimeout proxy
+      putStrLn $ "proxy timeout is " <> show timeout
+
+      booleanResult <- readBoolAttribute proxy (AttributeName "boolean_scalar")
+      putStrLn $ "boolean_scalar is " <> show booleanResult
+
+      booleanResultBetter <- readBoolAttribute proxy (AttributeName "boolean_scalar")
+      putStrLn $ "boolean_scalar better is " <> show booleanResultBetter
+
+      booleanSpectrumResult <- readBoolSpectrumAttribute proxy (AttributeName "boolean_spectrum")
+      putStrLn $ "boolean_spectrum is " <> show booleanSpectrumResult
+#+end_src
+** What's missing
 
 - Server: Everything
 - Client
   1. Event callbacks
 
-* Interesting links/documentation
+** Interesting links/documentation
 
 - [[https://www.esrf.fr/computing/cs/tango/tango_doc/kernel_doc/cpp_doc/classTango_1_1DeviceProxy.html][DeviceProxy C++ API reference]]
