@@ -139,6 +139,9 @@ module Tango.Client
     commandInOutGeneric,
     commandInEnumOutGeneric,
     commandInGenericOutEnum,
+    commandListQuery,
+    commandQuery,
+    CommandInfo (..),
 
     -- * Properties
     PropertyName (..),
@@ -151,6 +154,12 @@ module Tango.Client
     lockDevice,
     unlockDevice,
     withLocked,
+    setTimeout,
+    getTimeout,
+    pollCommand,
+    stopPollCommand,
+    pollAttribute,
+    stopPollAttribute,
   )
 where
 
@@ -188,6 +197,8 @@ import Tango.Raw.Common
     HaskellAttributeDataList (attributeDataListSequence),
     HaskellAttributeInfoList (HaskellAttributeInfoList, attributeInfoListLength, attributeInfoListSequence),
     HaskellCommandData (..),
+    HaskellCommandInfo (..),
+    HaskellCommandInfoList (HaskellCommandInfoList, commandInfoLength, commandInfoSequence),
     HaskellDataFormat (..),
     HaskellDataQuality (..),
     HaskellDbData (..),
@@ -215,12 +226,16 @@ import Tango.Raw.Common
     HaskellTangoVarArray (..),
     Timeval (..),
     tango_command_inout,
+    tango_command_list_query,
+    tango_command_query,
     tango_create_device_proxy,
     tango_delete_device_property,
     tango_delete_device_proxy,
     tango_free_AttributeData,
     tango_free_AttributeInfoList,
     tango_free_CommandData,
+    tango_free_CommandInfo,
+    tango_free_CommandInfoList,
     tango_free_DbData,
     tango_free_DbDatum,
     tango_get_attribute_config,
@@ -228,9 +243,13 @@ import Tango.Raw.Common
     tango_get_property,
     tango_get_timeout_millis,
     tango_lock,
+    tango_poll_attribute,
+    tango_poll_command,
     tango_put_device_property,
     tango_read_attribute,
     tango_set_timeout_millis,
+    tango_stop_poll_attribute,
+    tango_stop_poll_command,
     tango_throw_exception,
     tango_unlock,
     tango_write_attribute,
@@ -241,7 +260,7 @@ import UnliftIO (MonadUnliftIO)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
 import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castCCharToChar, castPtr, free, new, newArray, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
-import Prelude (Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, div, error, fromIntegral, realToFrac, undefined)
+import Prelude (Bounded, Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, div, error, fromIntegral, realToFrac, undefined)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
@@ -294,6 +313,7 @@ cboolToBool x
   | x > 0 = True
   | otherwise = False
 
+-- | Create a new device proxy (check 'deleteDeviceProxy' and 'withDeviceProxy', too)
 newDeviceProxy :: forall m. (MonadUnliftIO m) => TangoUrl -> m DeviceProxy
 newDeviceProxy (TangoUrl url) = do
   alloca $ \proxyPtrPtr -> do
@@ -301,9 +321,11 @@ newDeviceProxy (TangoUrl url) = do
       liftIO $ checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
       liftIO $ peek proxyPtrPtr
 
+-- | Delete a device proxy (check 'newDeviceProxy' and 'withDeviceProxy', too)
 deleteDeviceProxy :: forall m. (MonadUnliftIO m) => DeviceProxy -> m ()
 deleteDeviceProxy proxyPtr = liftIO $ checkResult (tango_delete_device_proxy proxyPtr)
 
+-- | Safely initialize and clean up a device proxy for a given tango URL
 withDeviceProxy :: forall m a. (MonadUnliftIO m) => TangoUrl -> (DeviceProxy -> m a) -> m a
 withDeviceProxy (TangoUrl proxyAddress) =
   let initialize :: m DeviceProxyPtr
@@ -1330,6 +1352,73 @@ lockDevice = checkResult . liftIO . tango_lock
 unlockDevice :: (MonadUnliftIO m) => DeviceProxy -> m ()
 unlockDevice = checkResult . liftIO . tango_unlock
 
--- | Execute the given action with a locked device
+-- | Execute the given action with a locked device (see 'lockDevice' and 'unlockDevice')
 withLocked :: (MonadUnliftIO m) => DeviceProxy -> m () -> m ()
 withLocked devicePtr f = UnliftIO.bracket (lockDevice devicePtr) (\_ -> unlockDevice devicePtr) (const f)
+
+newtype Milliseconds = Milliseconds Int
+
+instance Show Milliseconds where
+  show (Milliseconds ms) = show ms <> "ms"
+
+setTimeout :: (MonadUnliftIO m) => DeviceProxy -> Milliseconds -> m ()
+setTimeout proxy (Milliseconds ms) = liftIO $ checkResult $ tango_set_timeout_millis proxy (fromIntegral ms)
+
+getTimeout :: (MonadUnliftIO m) => DeviceProxy -> m Milliseconds
+getTimeout proxy = liftIO $ with 0 \intPtr -> do
+  checkResult (tango_get_timeout_millis proxy intPtr)
+  intValue <- peek intPtr
+  pure (Milliseconds (fromIntegral intValue))
+
+pollCommand :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> Milliseconds -> m ()
+pollCommand proxy (CommandName commandName) (Milliseconds ms) = liftIO $ withCString (unpack commandName) \commandNameC -> checkResult (tango_poll_command proxy commandNameC (fromIntegral ms))
+
+stopPollCommand :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> m ()
+stopPollCommand proxy (CommandName commandName) = liftIO $ withCString (unpack commandName) (checkResult . tango_stop_poll_command proxy)
+
+pollAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Milliseconds -> m ()
+pollAttribute proxy (AttributeName attributeName) (Milliseconds ms) = liftIO $ withCString (unpack attributeName) \attributeNameC -> checkResult (tango_poll_attribute proxy attributeNameC (fromIntegral ms))
+
+stopPollAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m ()
+stopPollAttribute proxy (AttributeName attributeName) = liftIO $ withCString (unpack attributeName) (checkResult . tango_stop_poll_attribute proxy)
+
+data DisplayLevel = Operator | Expert deriving (Show, Enum, Bounded, Eq)
+
+data CommandInfo = CommandInfo
+  { commandInfoName :: !Text,
+    commandInfoTag :: !Int,
+    commandInfoInType :: !HaskellTangoDataType,
+    commandInfoOutType :: !HaskellTangoDataType,
+    commandInfoInTypeDesc :: !Text,
+    commandInfoOutTypeDesc :: !Text,
+    commandInfoDisplayLevel :: !DisplayLevel
+  }
+  deriving (Show)
+
+convertCommandInfo :: HaskellCommandInfo -> IO CommandInfo
+convertCommandInfo (HaskellCommandInfo {cmdName, cmdTag, cmdInType, cmdOutType, cmdInTypeDesc, cmdOutTypeDesc, cmdDisplayLevel}) =
+  CommandInfo
+    <$> peekCStringText cmdName
+    <*> pure (fromIntegral cmdTag)
+    <*> pure (toEnum (fromIntegral cmdInType))
+    <*> pure (toEnum (fromIntegral cmdOutType))
+    <*> peekCStringText cmdInTypeDesc
+    <*> peekCStringText cmdOutTypeDesc
+    <*> pure (toEnum (fromIntegral cmdDisplayLevel))
+
+commandListQuery :: (MonadUnliftIO m) => DeviceProxy -> m [CommandInfo]
+commandListQuery proxy = liftIO $ with (HaskellCommandInfoList 0 nullPtr) \infoListPtr -> do
+  checkResult (tango_command_list_query proxy infoListPtr)
+  infoList <- peek infoListPtr
+  converted <- peekArray (fromIntegral (commandInfoLength infoList)) (commandInfoSequence infoList)
+  result <- traverse convertCommandInfo converted
+  tango_free_CommandInfoList infoListPtr
+  pure result
+
+commandQuery :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> m CommandInfo
+commandQuery proxy (CommandName commandName) = liftIO $ withCString (unpack commandName) \commandNamePtr -> alloca \commandInfoPtr -> do
+  checkResult (tango_command_query proxy commandNamePtr commandInfoPtr)
+  commandInfoC <- peek commandInfoPtr
+  result <- convertCommandInfo commandInfoC
+  tango_free_CommandInfo commandInfoPtr
+  pure result

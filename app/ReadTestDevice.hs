@@ -5,6 +5,7 @@
 
 module Main where
 
+import Control.Monad (forM_)
 import Data.Int (Int16)
 import Data.Text.IO qualified as TIO
 import Tango.Client
@@ -15,6 +16,10 @@ main =
   case parseTangoUrl "sys/tg_test/1" of
     Left e -> error "couldn't resolve tango URL"
     Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do
+      timeout <- getTimeout proxy
+
+      putStrLn $ "proxy timeout is " <> show timeout
+
       booleanResult <- readBoolAttribute proxy (AttributeName "boolean_scalar")
       putStrLn $ "boolean_scalar is " <> show booleanResult
 
@@ -69,3 +74,13 @@ main =
 
       prop <- getDeviceProperties proxy [PropertyName "testproperty"]
       putStrLn $ "properties " <> show prop
+
+      commandList <- commandListQuery proxy
+
+      putStrLn "got the following commands:"
+      forM_ commandList \commandInfo ->
+        print commandInfo
+
+      singleCommand <- commandQuery proxy (CommandName "DevString")
+
+      print singleCommand
