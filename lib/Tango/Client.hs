@@ -42,7 +42,7 @@ module Tango.Client
     newDeviceProxy,
     deleteDeviceProxy,
     TangoException (TangoException),
-    HaskellDevFailed (HaskellDevFailed),
+    DevFailed (DevFailed),
     devFailedDesc,
     devFailedReason,
     devFailedOrigin,
@@ -210,6 +210,7 @@ import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (IO, print)
 import Tango.Raw.Common
   ( DatabaseProxyPtr,
+    DevFailed (DevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     DeviceProxyPtr,
     HaskellAttrWriteType (Read, ReadWrite),
     HaskellAttributeData (..),
@@ -222,7 +223,6 @@ import Tango.Raw.Common
     HaskellDataQuality (..),
     HaskellDbData (..),
     HaskellDbDatum (..),
-    HaskellDevFailed (HaskellDevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     HaskellDispLevel,
     HaskellErrorStack (errorStackLength, errorStackSequence),
     HaskellTangoAttributeData
@@ -289,7 +289,7 @@ import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort,
 import Prelude (Bounded, Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, div, error, fromIntegral, realToFrac, undefined)
 
 -- | This wraps the Tango exception trace in Haskell
-newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
+newtype TangoException = TangoException [DevFailed Text] deriving (Show)
 
 instance Exception TangoException
 
@@ -312,7 +312,7 @@ checkResult action = do
   when (es /= nullPtr) $ do
     errorStack <- liftIO $ peek es
     stackItems <- peekArray (fromIntegral (errorStackLength errorStack)) (errorStackSequence errorStack)
-    formattedStackItems :: [HaskellDevFailed Text] <- traverse (traverse peekCStringText) stackItems
+    formattedStackItems :: [DevFailed Text] <- traverse (traverse peekCStringText) stackItems
     throw (TangoException formattedStackItems)
 
 -- | Newtype wrapper around a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@. Retrieve via 'parseTangoUrl'

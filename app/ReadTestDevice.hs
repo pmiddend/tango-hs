@@ -20,7 +20,7 @@ main =
 
       putStrLn $ "proxy timeout is " <> show timeout
 
-      booleanResult <- readBoolAttribute proxy (AttributeName "boolean_scalar")
+      booleanResult <- readBoolAttribute proxy (AttributeName "boolean_scalar2")
       putStrLn $ "boolean_scalar is " <> show booleanResult
 
       booleanResultBetter <- readBoolAttribute proxy (AttributeName "boolean_scalar")

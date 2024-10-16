@@ -30,7 +30,7 @@ module Tango.Raw.Common
     DeviceProxyPtr,
     HaskellDevSource (..),
     HaskellErrorStack (..),
-    HaskellDevFailed (..),
+    DevFailed (..),
     HaskellAttributeData (..),
     HaskellCommandData (..),
     HaskellTangoDataType (..),
@@ -860,19 +860,36 @@ instance Storable HaskellCommandData where
       HaskellCommandDoubleStringArray v -> (# poke CommandData, cmd_data) ptr v
       HaskellCommandDevEnum v -> (# poke CommandData, cmd_data) ptr v
 
-data HaskellDevFailed a = HaskellDevFailed
-  { devFailedDesc :: !a,
+data ErrSeverity
+  = Warn
+  | Err
+  | Panic
+  deriving (Show, Eq, Bounded, Enum)
+
+instance Storable ErrSeverity where
+  sizeOf _ = (# size TangoDevState)
+  alignment _ = (# alignment TangoDevState)
+  peek = peekBounded "ErrSeverity"
+  poke = pokeBounded "ErrSeverity"
+
+-- | Wraps one piece of a Tango error trace (usually you will have lists of @DevFailed@ records). This is a generic to make treating its fields easier with respect to 'Text' and 'CString' (it's also a 'Functor' and 'Traversable' and all that for that reason)
+data DevFailed a = DevFailed
+  { -- | Failure description; this will usually be the actual error message you're interested in and will be human-readable
+    devFailedDesc :: !a,
+    -- | Failure reason; this is usually an error code string, like @API_AttrNotFound@
     devFailedReason :: !a,
+    -- | Failure origin: this is usually the C++ function that caused the error
     devFailedOrigin :: !a,
-    devFailedSeverity :: !CInt
+    -- | Severity: not sure what the consequences of the individual severities are
+    devFailedSeverity :: !ErrSeverity
   }
   deriving (Functor, Foldable, Traversable, Generic, Show)
 
-instance (Storable a) => GStorable (HaskellDevFailed a)
+instance (Storable a) => GStorable (DevFailed a)
 
 data HaskellErrorStack = HaskellErrorStack
   { errorStackLength :: !Word32,
-    errorStackSequence :: !(Ptr (HaskellDevFailed CString))
+    errorStackSequence :: !(Ptr (DevFailed CString))
   }
   deriving (Generic)
 
