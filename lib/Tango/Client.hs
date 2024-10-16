@@ -49,6 +49,8 @@ module Tango.Client
     Image (Image, imageContent, imageDimX, imageDimY),
     readIntegralAttribute,
     writeIntegralAttribute,
+    readRealAttribute,
+    writeRealAttribute,
     readBoolAttribute,
     readBoolSpectrumAttribute,
     readBoolImageAttribute,
@@ -231,7 +233,7 @@ import UnliftIO (MonadUnliftIO)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
 import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castCCharToChar, castPtr, free, new, newArray, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
-import Prelude (Double, Enum (fromEnum, toEnum), Float, Integral, Num ((*)), div, error, fromIntegral, realToFrac, undefined)
+import Prelude (Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, div, error, fromIntegral, realToFrac, undefined)
 
 newtype TangoException = TangoException [HaskellDevFailed Text] deriving (Show)
 
@@ -379,6 +381,17 @@ writeIntegralAttribute proxyPtr attributeName newValue = do
     HaskellDevULong64 ->
       writeULong64Attribute proxyPtr attributeName (fromIntegral newValue)
     _ -> error $ "tried to write integral attribute " <> show attributeName <> " but the attribute is not an integral type"
+
+-- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
+writeRealAttribute :: (MonadUnliftIO m, Fractional i, Real i) => DeviceProxyPtr -> AttributeName -> i -> m ()
+writeRealAttribute proxyPtr attributeName newValue = do
+  config <- getConfigForAttribute proxyPtr attributeName
+  case attributeInfoDataType config of
+    HaskellDevFloat ->
+      writeFloatAttribute proxyPtr attributeName (realToFrac newValue)
+    HaskellDevDouble ->
+      writeDoubleAttribute proxyPtr attributeName (realToFrac newValue)
+    _ -> error $ "tried to write real attribute " <> show attributeName <> " but the attribute is not a real type"
 
 writeBoolAttribute :: (MonadUnliftIO m) => DeviceProxyPtr -> AttributeName -> Bool -> m ()
 writeBoolAttribute proxyPtr attributeName newValue =
@@ -650,6 +663,22 @@ readIntegralAttribute = readAttributeGeneral extract
       (HaskellAttributeDataULongArray a) -> extractHelper a
       (HaskellAttributeDataLong64Array a) -> extractHelper a
       (HaskellAttributeDataULong64Array a) -> extractHelper a
+      _ -> pure Nothing
+
+-- | Read an attribute irrespective of the concrete real type. This just uses 'realToFrac' internally to convert to 'Int'
+readRealAttribute :: forall m i. (MonadUnliftIO m, Fractional i, Real i) => DeviceProxy -> AttributeName -> m (TangoValue i)
+readRealAttribute = readAttributeGeneral extract
+  where
+    extractHelper :: forall b. (Storable b, Real b, Fractional b) => HaskellTangoVarArray b -> IO (Maybe (TangoValue i))
+    extractHelper a = do
+      arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
+      case realToFrac <$> arrayElements of
+        [first, second] -> pure (Just (TangoValue first second))
+        _ -> pure Nothing
+    extract :: HaskellAttributeData -> IO (Maybe (TangoValue i))
+    extract ad = case tangoAttributeData ad of
+      (HaskellAttributeDataDoubleArray a) -> extractHelper a
+      (HaskellAttributeDataFloatArray a) -> extractHelper a
       _ -> pure Nothing
 
 extractBool :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CBool)

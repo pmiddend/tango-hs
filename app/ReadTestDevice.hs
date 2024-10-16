@@ -46,6 +46,11 @@ main =
       -- mapM_ TIO.putStrLn (imageContent stringImage)
       -- putStrLn "string image end"
 
+      floatResultAsReal <- readRealAttribute proxy (AttributeName "float_scalar")
+      doubleResultAsReal <- readRealAttribute proxy (AttributeName "double_scalar")
+
+      putStrLn $ "float result " <> show floatResultAsReal <> ", double result: " <> show doubleResultAsReal
+
       writeLong64Attribute proxy (AttributeName "long64_scalar") 1337
 
       result <- commandInOutGeneric proxy (CommandName "DevVoid") CommandVoid
