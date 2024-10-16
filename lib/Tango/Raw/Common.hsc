@@ -17,6 +17,7 @@ module Tango.Raw.Common
     HaskellTangoDevEncoded (..),
     HaskellTangoEventType (..),
     HaskellAttrWriteType (..),
+    DatabaseProxyPtr,
     HaskellDataQuality (..),
     HaskellDbData (..),
     HaskellDbDatum (..),
@@ -911,6 +912,8 @@ instance GStorable HaskellAttributeDataList
 
 type DeviceProxyPtr = Ptr ()
 
+type DatabaseProxyPtr = Ptr ()
+
 type TangoError = Ptr HaskellErrorStack
 
 foreign import capi "c_tango.h tango_create_device_proxy"
@@ -995,31 +998,31 @@ foreign import capi "c_tango.h tango_write_attributes"
   tango_write_attributes :: DeviceProxyPtr -> Ptr HaskellAttributeDataList -> IO TangoError
 
 foreign import capi "c_tango.h tango_create_database_proxy"
-  tango_create_database_proxy :: Ptr DeviceProxyPtr -> IO TangoError
+  tango_create_database_proxy :: Ptr DatabaseProxyPtr -> IO TangoError
 
 foreign import capi "c_tango.h tango_delete_database_proxy"
-  tango_delete_database_proxy :: DeviceProxyPtr -> IO TangoError
+  tango_delete_database_proxy :: DatabaseProxyPtr -> IO TangoError
 
 foreign import capi "c_tango.h tango_get_device_exported"
-  tango_get_device_exported :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
+  tango_get_device_exported :: DatabaseProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
 foreign import capi "c_tango.h tango_get_device_exported_for_class"
-  tango_get_device_exported_for_class :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
+  tango_get_device_exported_for_class :: DatabaseProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
 foreign import capi "c_tango.h tango_get_object_list"
-  tango_get_object_list :: DeviceProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
+  tango_get_object_list :: DatabaseProxyPtr -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
 foreign import capi "c_tango.h tango_get_object_property_list"
-  tango_get_object_property_list :: DeviceProxyPtr -> CString -> CString -> Ptr HaskellDbDatum -> IO TangoError
+  tango_get_object_property_list :: DatabaseProxyPtr -> CString -> CString -> Ptr HaskellDbDatum -> IO TangoError
 
 foreign import capi "c_tango.h tango_get_property"
-  tango_get_property :: DeviceProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
+  tango_get_property :: DatabaseProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
 
 foreign import capi "c_tango.h tango_put_property"
-  tango_put_property :: DeviceProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
+  tango_put_property :: DatabaseProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
 
 foreign import capi "c_tango.h tango_delete_property"
-  tango_delete_property :: DeviceProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
+  tango_delete_property :: DatabaseProxyPtr -> CString -> Ptr HaskellDbData -> IO TangoError
 
 foreign import capi "c_tango.h tango_get_device_property"
   tango_get_device_property :: DeviceProxyPtr -> Ptr HaskellDbData -> IO TangoError

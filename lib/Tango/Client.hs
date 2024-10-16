@@ -150,9 +150,19 @@ module Tango.Client
     deleteDeviceProperties,
     HaskellTangoDevState (..),
 
+    -- * Database proxy
+    createDatabaseProxy,
+    deleteDatabaseProxy,
+    withDatabaseProxy,
+    databaseSearchByDeviceName,
+    databaseSearchByClass,
+    databaseSearchObjectsByName,
+    databaseSearchObjectPropertiesByName,
+
     -- * Various other device-related functions
     lockDevice,
     unlockDevice,
+    getAttributeNames,
     withLocked,
     setTimeout,
     getTimeout,
@@ -191,7 +201,8 @@ import Foreign.C.String (CString)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (IO, print)
 import Tango.Raw.Common
-  ( DeviceProxyPtr,
+  ( DatabaseProxyPtr,
+    DeviceProxyPtr,
     HaskellAttrWriteType (Read, ReadWrite),
     HaskellAttributeData (..),
     HaskellAttributeDataList (attributeDataListSequence),
@@ -228,7 +239,9 @@ import Tango.Raw.Common
     tango_command_inout,
     tango_command_list_query,
     tango_command_query,
+    tango_create_database_proxy,
     tango_create_device_proxy,
+    tango_delete_database_proxy,
     tango_delete_device_property,
     tango_delete_device_proxy,
     tango_free_AttributeData,
@@ -238,8 +251,14 @@ import Tango.Raw.Common
     tango_free_CommandInfoList,
     tango_free_DbData,
     tango_free_DbDatum,
+    tango_free_VarStringArray,
     tango_get_attribute_config,
+    tango_get_attribute_list,
+    tango_get_device_exported,
+    tango_get_device_exported_for_class,
     tango_get_device_property,
+    tango_get_object_list,
+    tango_get_object_property_list,
     tango_get_property,
     tango_get_timeout_millis,
     tango_lock,
@@ -303,6 +322,9 @@ parseTangoUrl url =
 
 -- This just looks nicer because not a pointer
 type DeviceProxy = DeviceProxyPtr
+
+-- This just looks nicer because not a pointer
+type DatabaseProxy = DatabaseProxyPtr
 
 boolToCBool :: Bool -> CBool
 boolToCBool True = 1
@@ -1422,3 +1444,62 @@ commandQuery proxy (CommandName commandName) = liftIO $ withCString (unpack comm
   result <- convertCommandInfo commandInfoC
   tango_free_CommandInfo commandInfoPtr
   pure result
+
+getAttributeNames :: (MonadUnliftIO m) => DeviceProxy -> m [AttributeName]
+getAttributeNames proxy = liftIO $ with (HaskellTangoVarArray 0 nullPtr) \nameListPtr -> do
+  checkResult (tango_get_attribute_list proxy nameListPtr)
+  nameList <- peek nameListPtr
+  names <- peekArray (fromIntegral (varArrayLength nameList)) (varArrayValues nameList)
+  result <- traverse ((AttributeName <$>) . peekCStringText) names
+  tango_free_VarStringArray nameListPtr
+  pure result
+
+-- | Create a proxy for the Tango DB (not the same as a device proxy), see 'deleteDatabaseProxy' and 'withDatabaseProxy'
+createDatabaseProxy :: (MonadUnliftIO m) => m DatabaseProxy
+createDatabaseProxy = liftIO $ alloca \databaseProxyPtrPtr -> do
+  checkResult (tango_create_database_proxy databaseProxyPtrPtr)
+  peek databaseProxyPtrPtr
+
+-- | Delete proxy for the Tango DB, see 'createDatabaseProxy' and 'withDatabaseProxy'
+deleteDatabaseProxy :: (MonadUnliftIO m) => DatabaseProxy -> m ()
+deleteDatabaseProxy proxy = liftIO (checkResult (tango_delete_database_proxy proxy))
+
+-- | Execute an action safely, on a database proxy, see 'createDatabaseProxy' and 'deleteDatabaseProxy'
+withDatabaseProxy :: (MonadUnliftIO m) => (DatabaseProxy -> m a) -> m a
+withDatabaseProxy f = UnliftIO.bracket createDatabaseProxy deleteDatabaseProxy f
+
+-- | Search the database for devices with a certain name filter. Can include globs, such as @sys/*@ to search for all devices starting with @sys@.
+databaseSearchByDeviceName :: (MonadUnliftIO m) => DatabaseProxy -> Text -> m [Text]
+databaseSearchByDeviceName proxy nameFilter = liftIO $ withCString (unpack nameFilter) \deviceNamePtr -> alloca \dbDatumPtr -> do
+  checkResult (tango_get_device_exported proxy deviceNamePtr dbDatumPtr)
+  dbDatum <- peek dbDatumPtr
+  result <- convertDbDatum dbDatum
+  tango_free_DbDatum dbDatumPtr
+  pure (propertyData result)
+
+-- | Search the database for devices with a certain class
+databaseSearchByClass :: (MonadUnliftIO m) => DatabaseProxy -> Text -> m [Text]
+databaseSearchByClass proxy classFilter = liftIO $ withCString (unpack classFilter) \classNamePtr -> alloca \dbDatumPtr -> do
+  checkResult (tango_get_device_exported_for_class proxy classNamePtr dbDatumPtr)
+  dbDatum <- peek dbDatumPtr
+  result <- convertDbDatum dbDatum
+  tango_free_DbDatum dbDatumPtr
+  pure (propertyData result)
+
+-- | Search the database for objects with a certain name (don't know what this is)
+databaseSearchObjectsByName :: (MonadUnliftIO m) => DatabaseProxy -> Text -> m [Text]
+databaseSearchObjectsByName proxy nameFilter = liftIO $ withCString (unpack nameFilter) \nameFilterPtr -> alloca \dbDatumPtr -> do
+  checkResult (tango_get_object_list proxy nameFilterPtr dbDatumPtr)
+  dbDatum <- peek dbDatumPtr
+  result <- convertDbDatum dbDatum
+  tango_free_DbDatum dbDatumPtr
+  pure (propertyData result)
+
+-- | I don't know what this is for
+databaseSearchObjectPropertiesByName :: (MonadUnliftIO m) => DatabaseProxy -> Text -> Text -> m [Text]
+databaseSearchObjectPropertiesByName proxy objectName nameFilter = liftIO $ withCString (unpack objectName) \objectNamePtr -> withCString (unpack nameFilter) \nameFilterPtr -> alloca \dbDatumPtr -> do
+  checkResult (tango_get_object_property_list proxy objectNamePtr nameFilterPtr dbDatumPtr)
+  dbDatum <- peek dbDatumPtr
+  result <- convertDbDatum dbDatum
+  tango_free_DbDatum dbDatumPtr
+  pure (propertyData result)

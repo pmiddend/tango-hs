@@ -83,4 +83,19 @@ main =
 
       singleCommand <- commandQuery proxy (CommandName "DevString")
 
+      attributeNames <- getAttributeNames proxy
+      putStrLn "got the following attribute names:"
+      forM_ attributeNames \attributeName ->
+        print attributeName
+
       print singleCommand
+
+      withDatabaseProxy \dbProxy -> do
+        byName <- databaseSearchByDeviceName dbProxy "*"
+        putStrLn $ "device sys/tg_test/1: " <> show byName
+
+        byClass <- databaseSearchByClass dbProxy "TangoTest"
+        putStrLn $ "device TangoTest: " <> show byClass
+
+        objectsByName <- databaseSearchObjectsByName dbProxy "*"
+        putStrLn $ "objects *: " <> show objectsByName
