@@ -17,6 +17,7 @@ module Tango.Raw.Common
     HaskellTangoDevEncoded (..),
     HaskellTangoEventType (..),
     HaskellAttrWriteType (..),
+    ErrSeverity (..),
     DatabaseProxyPtr,
     HaskellDataQuality (..),
     HaskellDbData (..),
@@ -122,6 +123,7 @@ pokeBounded desc ptr x =
     Nothing -> error ("invalid constant (" <> desc <> "): " <> show x)
     Just v -> poke @CInt (castPtr ptr) v
 
+-- | List of all states that Tango knows about for device servers
 data HaskellTangoDevState
   = On
   | Off
@@ -860,6 +862,7 @@ instance Storable HaskellCommandData where
       HaskellCommandDoubleStringArray v -> (# poke CommandData, cmd_data) ptr v
       HaskellCommandDevEnum v -> (# poke CommandData, cmd_data) ptr v
 
+-- | How severe is the error (used in the Tango error types)
 data ErrSeverity
   = Warn
   | Err

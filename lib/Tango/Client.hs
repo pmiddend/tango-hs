@@ -48,11 +48,13 @@ module Tango.Client
     -- | To ensure proper cleanup, you should prefer the 'withDeviceProxy' function to initialize a proxy to a device, and then do something with it.
     DeviceProxy,
     TangoUrl,
+    Milliseconds (Milliseconds),
     parseTangoUrl,
     withDeviceProxy,
     newDeviceProxy,
     deleteDeviceProxy,
     TangoException (TangoException),
+    RawCommon.ErrSeverity (..),
     DevFailed (DevFailed),
     devFailedDesc,
     devFailedReason,
@@ -66,103 +68,118 @@ module Tango.Client
     getConfigForAttribute,
     TangoValue (TangoValue, tangoValueRead, tangoValueWrite),
     Image (Image, imageContent, imageDimX, imageDimY),
+
+    -- ** More general types
+
+    -- *** Reading
     readIntegralAttribute,
-    writeIntegralAttribute,
-    readIntegralSpectrumAttribute,
-    writeIntegralSpectrumAttribute,
     readIntegralImageAttribute,
-    writeIntegralImageAttribute,
+    readIntegralSpectrumAttribute,
     readRealAttribute,
-    writeRealAttribute,
-    readRealSpectrumAttribute,
-    writeRealSpectrumAttribute,
     readRealImageAttribute,
+    readRealSpectrumAttribute,
+
+    -- *** Writing
+    writeIntegralAttribute,
+    writeIntegralImageAttribute,
+    writeIntegralSpectrumAttribute,
+    writeRealAttribute,
     writeRealImageAttribute,
+    writeRealSpectrumAttribute,
+
+    -- ** Specific types
+
+    -- *** Reading
     readBoolAttribute,
-    readBoolSpectrumAttribute,
     readBoolImageAttribute,
-    readShortAttribute,
-    readShortSpectrumAttribute,
-    readShortImageAttribute,
-    readUShortAttribute,
-    readUShortSpectrumAttribute,
-    readUShortImageAttribute,
-    readStringAttribute,
-    readStringSpectrumAttribute,
-    readStringImageAttribute,
-    readLongAttribute,
-    readLongSpectrumAttribute,
-    readLongImageAttribute,
-    readULongAttribute,
-    readULongSpectrumAttribute,
-    readULongImageAttribute,
-    readLong64Attribute,
-    readLong64SpectrumAttribute,
-    readLong64ImageAttribute,
-    readULong64Attribute,
-    readULong64SpectrumAttribute,
-    readULong64ImageAttribute,
-    readFloatAttribute,
-    readFloatSpectrumAttribute,
-    readFloatImageAttribute,
+    readBoolSpectrumAttribute,
     readDoubleAttribute,
-    readDoubleSpectrumAttribute,
     readDoubleImageAttribute,
-    readStateAttribute,
-    readStateSpectrumAttribute,
-    readStateImageAttribute,
+    readDoubleSpectrumAttribute,
     readEnumAttribute,
-    readEnumSpectrumAttribute,
     readEnumImageAttribute,
+    readEnumSpectrumAttribute,
+    readFloatAttribute,
+    readFloatImageAttribute,
+    readFloatSpectrumAttribute,
+    readLong64Attribute,
+    readLong64ImageAttribute,
+    readLong64SpectrumAttribute,
+    readLongAttribute,
+    readLongImageAttribute,
+    readLongSpectrumAttribute,
+    readShortAttribute,
+    readShortImageAttribute,
+    readShortSpectrumAttribute,
+    readStateAttribute,
+    readStateImageAttribute,
+    readStateSpectrumAttribute,
+    readStringAttribute,
+    readStringImageAttribute,
+    readStringSpectrumAttribute,
+    readULong64Attribute,
+    readULong64ImageAttribute,
+    readULong64SpectrumAttribute,
+    readULongAttribute,
+    readULongImageAttribute,
+    readULongSpectrumAttribute,
+    readUShortAttribute,
+    readUShortImageAttribute,
+    readUShortSpectrumAttribute,
+
+    -- *** Writing
     writeBoolAttribute,
-    writeBoolSpectrumAttribute,
     writeBoolImageAttribute,
-    writeShortAttribute,
-    writeShortSpectrumAttribute,
-    writeShortImageAttribute,
-    writeUShortAttribute,
-    writeUShortSpectrumAttribute,
-    writeUShortImageAttribute,
-    writeStringAttribute,
-    writeStringSpectrumAttribute,
-    writeStringImageAttribute,
-    writeLongAttribute,
-    writeLongSpectrumAttribute,
-    writeLongImageAttribute,
-    writeULongAttribute,
-    writeULongSpectrumAttribute,
-    writeULongImageAttribute,
-    writeLong64Attribute,
-    writeLong64SpectrumAttribute,
-    writeLong64ImageAttribute,
-    writeULong64Attribute,
-    writeULong64SpectrumAttribute,
-    writeULong64ImageAttribute,
-    writeFloatAttribute,
-    writeFloatSpectrumAttribute,
-    writeFloatImageAttribute,
+    writeBoolSpectrumAttribute,
     writeDoubleAttribute,
-    writeDoubleSpectrumAttribute,
     writeDoubleImageAttribute,
-    writeStateAttribute,
-    writeStateSpectrumAttribute,
-    writeStateImageAttribute,
+    writeDoubleSpectrumAttribute,
     writeEnumAttribute,
-    writeEnumSpectrumAttribute,
     writeEnumImageAttribute,
+    writeEnumSpectrumAttribute,
+    writeFloatAttribute,
+    writeFloatImageAttribute,
+    writeFloatSpectrumAttribute,
+    writeLong64Attribute,
+    writeLong64ImageAttribute,
+    writeLong64SpectrumAttribute,
+    writeLongAttribute,
+    writeLongImageAttribute,
+    writeLongSpectrumAttribute,
+    writeShortAttribute,
+    writeShortImageAttribute,
+    writeShortSpectrumAttribute,
+    writeStateAttribute,
+    writeStateImageAttribute,
+    writeStateSpectrumAttribute,
+    writeStringAttribute,
+    writeStringImageAttribute,
+    writeStringSpectrumAttribute,
+    writeULong64Attribute,
+    writeULong64ImageAttribute,
+    writeULong64SpectrumAttribute,
+    writeULongAttribute,
+    writeULongImageAttribute,
+    writeULongSpectrumAttribute,
+    writeUShortAttribute,
+    writeUShortImageAttribute,
+    writeUShortSpectrumAttribute,
 
     -- * Commands
     CommandName (CommandName),
+    DisplayLevel (..),
     commandInVoidOutVoid,
     CommandData (..),
     commandInOutGeneric,
     commandInEnumOutGeneric,
     commandInGenericOutEnum,
+    commandInEnumOutEnum,
     commandListQuery,
     commandQuery,
     CommandInfo (..),
 
     -- * Properties
+    Property (..),
     PropertyName (..),
     getDeviceProperties,
     putDeviceProperties,
@@ -170,6 +187,7 @@ module Tango.Client
     HaskellTangoDevState (..),
 
     -- * Database proxy
+    DatabaseProxy,
     createDatabaseProxy,
     deleteDatabaseProxy,
     withDatabaseProxy,
@@ -317,6 +335,7 @@ peekCStringArrayText len x = do
   ptrList <- liftIO $ peekArray (fromIntegral len) x
   traverse peekCStringText ptrList
 
+-- | Execute a Tango action that potentially returns an error; convert this error into 'TangoException'
 checkResult :: (MonadUnliftIO m) => m (Ptr HaskellErrorStack) -> m ()
 checkResult action = do
   es <- action
@@ -345,7 +364,7 @@ parseTangoUrl url =
 -- | Wraps a pointer to a device proxy
 newtype DeviceProxy = DeviceProxy DeviceProxyPtr
 
--- This just looks nicer because not a pointer
+-- | This just looks nicer because not a pointer
 type DatabaseProxy = DatabaseProxyPtr
 
 boolToCBool :: Bool -> CBool
@@ -361,7 +380,7 @@ cboolToBool x
 newDeviceProxy :: forall m. (MonadUnliftIO m) => TangoUrl -> m DeviceProxy
 newDeviceProxy (TangoUrl url) = liftIO $
   alloca $ \proxyPtrPtr -> do
-    withcstring (unpack url) $ \proxyName -> do
+    withCString (unpack url) $ \proxyName -> do
       checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
       DeviceProxy <$> peek proxyPtrPtr
 
@@ -548,126 +567,157 @@ writeRealSpectrumAttribute proxy attributeName newValues = do
       writeDoubleSpectrumAttribute proxy attributeName (realToFrac <$> newValues)
     _ -> error $ "tried to write real attribute " <> show attributeName <> " but the attribute is not a real type"
 
+-- | Write a boolean scalar attribute
 writeBoolAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Bool -> m ()
 writeBoolAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (boolToCBool newValue) HaskellDevBoolean HaskellAttributeDataBoolArray
 
+-- | Write a boolean spectrum attribute
 writeBoolSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Bool] -> m ()
 writeBoolSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (boolToCBool <$> newValues) HaskellDevBoolean HaskellAttributeDataBoolArray
 
+-- | Write a boolean image attribute
 writeBoolImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Bool -> m ()
 writeBoolImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (boolToCBool <$> newImage) HaskellDevBoolean HaskellAttributeDataBoolArray
 
+-- | Write a short scalar attribute
 writeShortAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Int16 -> m ()
 writeShortAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (fromIntegral newValue) HaskellDevShort HaskellAttributeDataShortArray
 
+-- | Write a short spectrum attribute
 writeShortSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Int16] -> m ()
 writeShortSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (fromIntegral <$> newValues) HaskellDevShort HaskellAttributeDataShortArray
 
+-- | Write a short image attribute
 writeShortImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Int16 -> m ()
 writeShortImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (fromIntegral <$> newImage) HaskellDevShort HaskellAttributeDataShortArray
 
+-- | Write an unsigned short scalar attribute
 writeUShortAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Word16 -> m ()
 writeUShortAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (fromIntegral newValue) HaskellDevUShort HaskellAttributeDataUShortArray
 
+-- | Write an unsigned short spectrum attribute
 writeUShortSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Word16] -> m ()
 writeUShortSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (fromIntegral <$> newValues) HaskellDevUShort HaskellAttributeDataUShortArray
 
+-- | Write an unsigned short image attribute
 writeUShortImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Word16 -> m ()
 writeUShortImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (fromIntegral <$> newImage) HaskellDevUShort HaskellAttributeDataUShortArray
 
+-- | Write a long scalar attribute
 writeLongAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Int64 -> m ()
 writeLongAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (fromIntegral newValue) HaskellDevLong HaskellAttributeDataLongArray
 
+-- | Write a long spectrum attribute
 writeLongSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Int64] -> m ()
 writeLongSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (fromIntegral <$> newValues) HaskellDevLong HaskellAttributeDataLongArray
 
+-- | Write a long image attribute
 writeLongImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Int64 -> m ()
 writeLongImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (fromIntegral <$> newImage) HaskellDevLong HaskellAttributeDataLongArray
 
+-- | Write an unsigned long scalar attribute
 writeULongAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Word64 -> m ()
 writeULongAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (fromIntegral newValue) HaskellDevULong HaskellAttributeDataULongArray
 
+-- | Write an unsigned long spectrum attribute
 writeULongSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Word64] -> m ()
 writeULongSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (fromIntegral <$> newValues) HaskellDevULong HaskellAttributeDataULongArray
 
+-- | Write an unsigned long image attribute
 writeULongImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Word64 -> m ()
 writeULongImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (fromIntegral <$> newImage) HaskellDevULong HaskellAttributeDataULongArray
 
+-- | Write an unsigned long64 scalar attribute
 writeULong64Attribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Word64 -> m ()
 writeULong64Attribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (fromIntegral newValue) HaskellDevULong64 HaskellAttributeDataULong64Array
 
+-- | Write an unsigned long64 spectrum attribute
 writeULong64SpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Word64] -> m ()
 writeULong64SpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (fromIntegral <$> newValues) HaskellDevULong64 HaskellAttributeDataULong64Array
 
+-- | Write an unsigned long64 image attribute
 writeULong64ImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Word64 -> m ()
 writeULong64ImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (fromIntegral <$> newImage) HaskellDevULong64 HaskellAttributeDataULong64Array
 
+-- | Write a float scalar attribute
 writeFloatAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Double -> m ()
 writeFloatAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (realToFrac newValue) HaskellDevFloat HaskellAttributeDataFloatArray
 
+-- | Write a float spectrum attribute
 writeFloatSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Double] -> m ()
 writeFloatSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (realToFrac <$> newValues) HaskellDevFloat HaskellAttributeDataFloatArray
 
+-- | Write a float image attribute
 writeFloatImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Double -> m ()
 writeFloatImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (realToFrac <$> newImage) HaskellDevFloat HaskellAttributeDataFloatArray
 
+-- | Write a double scalar attribute
 writeDoubleAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Double -> m ()
 writeDoubleAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (realToFrac newValue) HaskellDevDouble HaskellAttributeDataDoubleArray
 
+-- | Write a double spectrum attribute
 writeDoubleSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Double] -> m ()
 writeDoubleSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (realToFrac <$> newValues) HaskellDevDouble HaskellAttributeDataDoubleArray
 
+-- | Write a double image attribute
 writeDoubleImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Double -> m ()
 writeDoubleImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (realToFrac <$> newImage) HaskellDevDouble HaskellAttributeDataDoubleArray
 
+-- | Write a state scalar attribute
 writeStateAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> HaskellTangoDevState -> m ()
 writeStateAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName newValue HaskellDevState HaskellAttributeDataStateArray
 
+-- | Write a state spectrum attribute
 writeStateSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [HaskellTangoDevState] -> m ()
 writeStateSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName newValues HaskellDevState HaskellAttributeDataStateArray
 
+-- | Write a state image attribute
 writeStateImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image HaskellTangoDevState -> m ()
 writeStateImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName newImage HaskellDevState HaskellAttributeDataStateArray
 
+-- | Write an enum scalar attribute
 writeEnumAttribute :: (MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> t -> m ()
 writeEnumAttribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (fromIntegral (fromEnum newValue)) HaskellDevEnum HaskellAttributeDataShortArray
 
+-- | Write an enum spectrum attribute
 writeEnumSpectrumAttribute :: (MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> [t] -> m ()
 writeEnumSpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (fromIntegral . fromEnum <$> newValues) HaskellDevEnum HaskellAttributeDataShortArray
 
+-- | Write an enum image attribute
 writeEnumImageAttribute :: (MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> Image t -> m ()
 writeEnumImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (fromIntegral . fromEnum <$> newImage) HaskellDevEnum HaskellAttributeDataShortArray
 
+-- | Write a string scalar attribute
 writeStringAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Text -> m ()
 writeStringAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newValue =
   withCStringText attributeName \attributeNameC -> do
@@ -688,6 +738,7 @@ writeStringAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newVal
           )
           (liftIO . void . tango_write_attribute proxyPtr)
 
+-- | Write a string spectrum attribute
 writeStringSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Text] -> m ()
 writeStringSpectrumAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newValues =
   withCStringText attributeName \attributeNameC ->
@@ -707,6 +758,7 @@ writeStringSpectrumAttribute (DeviceProxy proxyPtr) (AttributeName attributeName
         )
         \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
 
+-- | Write a string image attribute
 writeStringImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Text -> m ()
 writeStringImageAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) (Image newImage imageX imageY) =
   withCStringText attributeName \attributeNameC ->
@@ -727,14 +779,17 @@ writeStringImageAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) (
           )
           (liftIO . void . tango_write_attribute proxyPtr)
 
+-- | Write a long64 scalar attribute
 writeLong64Attribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Int64 -> m ()
 writeLong64Attribute proxy attributeName newValue =
   writeScalarAttribute proxy attributeName (fromIntegral newValue) HaskellDevLong64 HaskellAttributeDataLong64Array
 
+-- | Write a long64 spectrum attribute
 writeLong64SpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> [Int64] -> m ()
 writeLong64SpectrumAttribute proxy attributeName newValues =
   writeSpectrumAttribute proxy attributeName (fromIntegral <$> newValues) HaskellDevLong64 HaskellAttributeDataLong64Array
 
+-- | Write a long64 image attribute
 writeLong64ImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Int64 -> m ()
 writeLong64ImageAttribute proxy attributeName newImage =
   writeImageAttribute proxy attributeName (fromIntegral <$> newImage) HaskellDevLong64 HaskellAttributeDataLong64Array
@@ -742,14 +797,16 @@ writeLong64ImageAttribute proxy attributeName newImage =
 -- | Newtype wrapper to wrap an attribute name
 newtype AttributeName = AttributeName Text deriving (Show)
 
+-- | Read an attribute's value, call a function on it, and free it up again
 withReadAttribute :: (MonadIO m, MonadUnliftIO m) => DeviceProxyPtr -> CString -> (HaskellAttributeData -> m a) -> m a
 withReadAttribute proxyPtr attributeNameC f = alloca \haskellAttributeDataPtr -> do
   liftIO $ checkResult (tango_read_attribute proxyPtr attributeNameC haskellAttributeDataPtr)
   haskellAttributeData <- liftIO $ peek haskellAttributeDataPtr
   finally (f haskellAttributeData) (liftIO $ tango_free_AttributeData haskellAttributeDataPtr)
 
-withAttributeGeneral :: (MonadIO m, MonadUnliftIO m) => (HaskellAttributeData -> m (Maybe a)) -> DeviceProxy -> AttributeName -> (a -> m b) -> m b
-withAttributeGeneral extractValue (DeviceProxy proxyPtr) (AttributeName attributeNameHaskell) f =
+-- | Read an attribute's value, maybe extract something useful from it, convert that, and free the Tango data up again.
+withExtractedAttributeValue :: (MonadIO m, MonadUnliftIO m) => (HaskellAttributeData -> m (Maybe a)) -> DeviceProxy -> AttributeName -> (a -> m b) -> m b
+withExtractedAttributeValue extractValue (DeviceProxy proxyPtr) (AttributeName attributeNameHaskell) f =
   withCStringText attributeNameHaskell $ \attributeNameC -> withReadAttribute proxyPtr attributeNameC \haskellAttributeData -> do
     extractedValue <- extractValue haskellAttributeData
     case extractedValue of
@@ -770,14 +827,17 @@ readAttributeGeneral extractValue (DeviceProxy proxyPtr) (AttributeName attribut
 
 data AtLeastTwo a = AtLeastTwo a a [a]
 
+-- | Call 'withExtractedAttributeValue' to read an attribute's value (safely), extract the array within, and call a function that makes the parsed contents into something more useful.
 readAttributeSimple ::
   (MonadIO m, Storable a, Show a, MonadUnliftIO m) =>
+  -- | Extract a specific type of data array (usually extracting a single data type like bool, long, ...)
   (HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray a)) ->
+  -- | After taking at least two elements from the array given by the previous function, call this function and turn the whole thing into something useful
   (HaskellAttributeData -> AtLeastTwo a -> m b) ->
   DeviceProxy ->
   AttributeName ->
   m b
-readAttributeSimple extractValue convertValue proxy attributeName = withAttributeGeneral (\d -> pure ((d,) <$> extractValue (tangoAttributeData d))) proxy attributeName \(attributeData, tangoArray) -> do
+readAttributeSimple extractValue convertValue proxy attributeName = withExtractedAttributeValue (\d -> pure ((d,) <$> extractValue (tangoAttributeData d))) proxy attributeName \(attributeData, tangoArray) -> do
   arrayElements <- peekArray (fromIntegral (varArrayLength tangoArray)) (varArrayValues tangoArray)
   case arrayElements of
     (first : second : rest) -> convertValue attributeData (AtLeastTwo first second rest)
@@ -945,12 +1005,15 @@ extractShort :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CShort)
 extractShort (HaskellAttributeDataShortArray a) = Just a
 extractShort _ = Nothing
 
+-- | Read a short-type scalar attribute, fail hard if it's not really a short
 readShortAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Int16)
 readShortAttribute = readAttributeSimple extractShort (convertGenericScalar fromIntegral)
 
+-- | Read a short-type spectrum (list) attribute, fail hard if it's not really a short
 readShortSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Int16])
 readShortSpectrumAttribute = readAttributeSimple extractShort (convertGenericSpectrum fromIntegral)
 
+-- | Read a short-type image attribute, fail hard if it's not really a short
 readShortImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Int16))
 readShortImageAttribute = readAttributeSimple extractShort (convertGenericImage fromIntegral)
 
@@ -958,12 +1021,15 @@ extractUShort :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CUShor
 extractUShort (HaskellAttributeDataUShortArray a) = Just a
 extractUShort _ = Nothing
 
+-- | Read an unsigned short-type scalar attribute, fail hard if it's not really an unsigned short
 readUShortAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Word16)
 readUShortAttribute = readAttributeSimple extractUShort (convertGenericScalar fromIntegral)
 
+-- | Read an unsigned short-type spectrum (list) attribute, fail hard if it's not really an unsigned short
 readUShortSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Word16])
 readUShortSpectrumAttribute = readAttributeSimple extractUShort (convertGenericSpectrum fromIntegral)
 
+-- | Read an unsigned short-type image attribute, fail hard if it's not really an unsigned short
 readUShortImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Word16))
 readUShortImageAttribute = readAttributeSimple extractUShort (convertGenericImage fromIntegral)
 
@@ -971,12 +1037,15 @@ extractLong :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CLong)
 extractLong (HaskellAttributeDataLongArray a) = Just a
 extractLong _ = Nothing
 
+-- | Read a long-type scalar attribute, fail hard if it's not really a long
 readLongAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Int64)
 readLongAttribute = readAttributeSimple extractLong (convertGenericScalar fromIntegral)
 
+-- | Read a long-type spectrum (list) attribute, fail hard if it's not really a long
 readLongSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Int64])
 readLongSpectrumAttribute = readAttributeSimple extractLong (convertGenericSpectrum fromIntegral)
 
+-- | Read a long-type image attribute, fail hard if it's not really a long
 readLongImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Int64))
 readLongImageAttribute = readAttributeSimple extractLong (convertGenericImage fromIntegral)
 
@@ -984,12 +1053,15 @@ extractULong :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CULong)
 extractULong (HaskellAttributeDataULongArray a) = Just a
 extractULong _ = Nothing
 
+-- | Read an unsigned long-type scalar attribute, fail hard if it's not really an unsigned long
 readULongAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Word64)
 readULongAttribute = readAttributeSimple extractULong (convertGenericScalar fromIntegral)
 
+-- | Read an unsigned long-type spectrum (list) attribute, fail hard if it's not really an unsigned long
 readULongSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Word64])
 readULongSpectrumAttribute = readAttributeSimple extractULong (convertGenericSpectrum fromIntegral)
 
+-- | Read an unsigned long-type image attribute, fail hard if it's not really an unsigned long
 readULongImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Word64))
 readULongImageAttribute = readAttributeSimple extractULong (convertGenericImage fromIntegral)
 
@@ -997,12 +1069,15 @@ extractLong64 :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CLong)
 extractLong64 (HaskellAttributeDataLong64Array a) = Just a
 extractLong64 _ = Nothing
 
+-- | Read a long64-type scalar attribute, fail hard if it's not really a long64
 readLong64Attribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Int64)
 readLong64Attribute = readAttributeSimple extractLong64 (convertGenericScalar fromIntegral)
 
+-- | Read a long64-type spectrum (list) attribute, fail hard if it's not really a long64
 readLong64SpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Int64])
 readLong64SpectrumAttribute = readAttributeSimple extractLong64 (convertGenericSpectrum fromIntegral)
 
+-- | Read a long64-type image attribute, fail hard if it's not really a long64
 readLong64ImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Int64))
 readLong64ImageAttribute = readAttributeSimple extractLong64 (convertGenericImage fromIntegral)
 
@@ -1010,12 +1085,15 @@ extractULong64 :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CULon
 extractULong64 (HaskellAttributeDataULong64Array a) = Just a
 extractULong64 _ = Nothing
 
+-- | Read an unsigned long64-type scalar attribute, fail hard if it's not really an unsigned long64
 readULong64Attribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Word64)
 readULong64Attribute = readAttributeSimple extractULong64 (convertGenericScalar fromIntegral)
 
+-- | Read an unsigned long64-type spectrum (list) attribute, fail hard if it's not really an unsigned long64
 readULong64SpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Word64])
 readULong64SpectrumAttribute = readAttributeSimple extractULong64 (convertGenericSpectrum fromIntegral)
 
+-- | Read an unsigned long64-type image attribute, fail hard if it's not really an unsigned long64
 readULong64ImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Word64))
 readULong64ImageAttribute = readAttributeSimple extractULong64 (convertGenericImage fromIntegral)
 
@@ -1023,12 +1101,15 @@ extractFloat :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CFloat)
 extractFloat (HaskellAttributeDataFloatArray a) = Just a
 extractFloat _ = Nothing
 
+-- | Read a float-type scalar attribute, fail hard if it's not really a float
 readFloatAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Double)
 readFloatAttribute = readAttributeSimple extractFloat (convertGenericScalar realToFrac)
 
+-- | Read a float-type spectrum (list) attribute, fail hard if it's not really a float
 readFloatSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Double])
 readFloatSpectrumAttribute = readAttributeSimple extractFloat (convertGenericSpectrum realToFrac)
 
+-- | Read a float-type image attribute, fail hard if it's not really a float
 readFloatImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Double))
 readFloatImageAttribute = readAttributeSimple extractFloat (convertGenericImage realToFrac)
 
@@ -1036,12 +1117,15 @@ extractDouble :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CDoubl
 extractDouble (HaskellAttributeDataDoubleArray a) = Just a
 extractDouble _ = Nothing
 
+-- | Read a double-type scalar attribute, fail hard if it's not really a double
 readDoubleAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Double)
 readDoubleAttribute = readAttributeSimple extractDouble (convertGenericScalar realToFrac)
 
+-- | Read a double-type spectrum (list) attribute, fail hard if it's not really a double
 readDoubleSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Double])
 readDoubleSpectrumAttribute = readAttributeSimple extractDouble (convertGenericSpectrum realToFrac)
 
+-- | Read a double-type image attribute, fail hard if it's not really a double
 readDoubleImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Double))
 readDoubleImageAttribute = readAttributeSimple extractDouble (convertGenericImage realToFrac)
 
@@ -1049,12 +1133,15 @@ extractState :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray Haskell
 extractState (HaskellAttributeDataStateArray a) = Just a
 extractState _ = Nothing
 
+-- | Read a state-type scalar attribute, fail hard if it's not really a state
 readStateAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue HaskellTangoDevState)
 readStateAttribute = readAttributeSimple extractState (convertGenericScalar id)
 
+-- | Read a state-type spectrum (list) attribute, fail hard if it's not really a state type
 readStateSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [HaskellTangoDevState])
 readStateSpectrumAttribute = readAttributeSimple extractState (convertGenericSpectrum id)
 
+-- | Read a state-type image attribute, fail hard if it's not really a state
 readStateImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image HaskellTangoDevState))
 readStateImageAttribute = readAttributeSimple extractState (convertGenericImage id)
 
@@ -1062,20 +1149,25 @@ extractEnum :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CShort)
 extractEnum (HaskellAttributeDataShortArray a) = Just a
 extractEnum _ = Nothing
 
+-- | Read an enum-type scalar attribute, fail hard if it's not really an enum (internally, enums are shorts)
 readEnumAttribute :: (MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (TangoValue t)
 readEnumAttribute = readAttributeSimple extractEnum (convertGenericScalar (toEnum . fromIntegral))
 
+-- | Read an enum-type spectrum attribute, fail hard if it's not really an enum (internally, enums are shorts)
 readEnumSpectrumAttribute :: (MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (TangoValue [t])
 readEnumSpectrumAttribute = readAttributeSimple extractEnum (convertGenericSpectrum (toEnum . fromIntegral))
 
+-- | Read an enum-type image attribute, fail hard if it's not really an enum (internally, enums are shorts)
 readEnumImageAttribute :: (MonadUnliftIO m, Enum t) => DeviceProxy -> AttributeName -> m (TangoValue (Image t))
 readEnumImageAttribute = readAttributeSimple extractEnum (convertGenericImage (toEnum . fromIntegral))
 
+-- | Newtype wrapper around a command name
 newtype CommandName = CommandName Text
 
 instance Show CommandName where
   show (CommandName n) = show (unpack n)
 
+-- | Input and output data for a command
 data CommandData
   = CommandVoid
   | CommandBool !Bool
@@ -1101,6 +1193,7 @@ data CommandData
   | CommandListState ![HaskellTangoDevState]
   deriving (Show)
 
+-- | Execute command with no input and no output
 commandInVoidOutVoid :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> m ()
 commandInVoidOutVoid (DeviceProxy proxyPtr) (CommandName commandName) =
   liftIO $
@@ -1226,6 +1319,7 @@ fromRawCommandData (HaskellCommandData {tangoCommandData}) =
     HaskellCommandVarDevState a -> Just . CommandListState <$> tangoVarArrayToList a
     _ -> pure Nothing
 
+-- | Execute command with generic input and generic output. If you have an @Enum@ on hand, use 'commandInEnumOutGeneric', 'commandInGenericOutEnum' and 'commandInEnumOutEnum'
 commandInOutGeneric :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> CommandData -> m CommandData
 commandInOutGeneric (DeviceProxy proxyPtr) (CommandName commandName) in' =
   liftIO $
@@ -1240,12 +1334,22 @@ commandInOutGeneric (DeviceProxy proxyPtr) (CommandName commandName) in' =
               Nothing -> error "couldn't convert the command out value"
               Just result' -> pure result'
 
+-- | Execute command with /enum/ input and generic output (special case to handle arbitrary enums)
 commandInEnumOutGeneric :: (MonadUnliftIO m, Enum t) => DeviceProxy -> CommandName -> t -> m CommandData
 commandInEnumOutGeneric proxy commandName in' = commandInOutGeneric proxy commandName (CommandShort $ fromIntegral $ fromEnum in')
 
+-- | Execute command with generic input and /enum/ output (special case to handle arbitrary enums)
 commandInGenericOutEnum :: (MonadUnliftIO m, Enum t) => DeviceProxy -> CommandName -> CommandData -> m t
 commandInGenericOutEnum proxy commandName in' = do
   result <- commandInOutGeneric proxy commandName in'
+  case result of
+    CommandShort s -> pure (toEnum (fromIntegral s))
+    _ -> error ("command " <> show commandName <> " was supposed to return a short (for enums), but returned " <> show result)
+
+-- | Execute command with /enum input and /enum/ output (special case to handle arbitrary enums)
+commandInEnumOutEnum :: (MonadUnliftIO m, Enum t, Enum u) => DeviceProxy -> CommandName -> u -> m t
+commandInEnumOutEnum proxy commandName in' = do
+  result <- commandInOutGeneric proxy commandName (CommandShort $ fromIntegral $ fromEnum in')
   case result of
     CommandShort s -> pure (toEnum (fromIntegral s))
     _ -> error ("command " <> show commandName <> " was supposed to return a short (for enums), but returned " <> show result)
@@ -1336,11 +1440,13 @@ getConfigsForAttributes (DeviceProxy deviceProxyPtr) attributeNames = do
               elements <- peekArray (fromIntegral (attributeInfoListLength outputPeeked)) (attributeInfoListSequence outputPeeked)
               traverse convertAttributeInfo elements
 
+-- | Newtype wrapper around a property name
 newtype PropertyName = PropertyName Text
 
 instance Show PropertyName where
   show (PropertyName x) = show (unpack x)
 
+-- | All data stored for a property in Tango
 data Property = Property
   { propertyName :: !Text,
     propertyIsEmpty :: !Bool,
@@ -1375,6 +1481,7 @@ freeDbDatum dbDatum = do
   -- free (dbDatumPropertyName dbDatum)
   liftIO (tango_free_DbDatum dbDatumPtr)
 
+-- | Get a list of information for the given property names
 getDeviceProperties :: forall m. (MonadUnliftIO m) => DeviceProxy -> [PropertyName] -> m [Property]
 getDeviceProperties (DeviceProxy proxyPtr) names =
   let initialize :: m [HaskellDbDatum]
@@ -1406,6 +1513,7 @@ nameAndValueToDbDatum (PropertyName name, texts) = do
   nameCString <- newCString (unpack name)
   pure (HaskellDbDatum nameCString False False HaskellDevVarStringArray (HaskellPropStringArray varArray))
 
+-- | Change property values for the device (here with a crude pair)
 putDeviceProperties :: forall m. (MonadUnliftIO m) => DeviceProxy -> [(PropertyName, [Text])] -> m ()
 putDeviceProperties (DeviceProxy proxyPtr) namesAndValues =
   bracket
@@ -1418,6 +1526,7 @@ putDeviceProperties (DeviceProxy proxyPtr) namesAndValues =
             (HaskellDbData (fromIntegral (length namesAndValues)) dbDatumPtrIn)
             (checkResult . liftIO . tango_put_device_property proxyPtr)
 
+-- | Delete the given device properties
 deleteDeviceProperties :: forall m. (MonadUnliftIO m) => DeviceProxy -> [PropertyName] -> m ()
 deleteDeviceProperties (DeviceProxy proxyPtr) names =
   let initialize :: m [HaskellDbDatum]
@@ -1446,34 +1555,43 @@ unlockDevice (DeviceProxy proxyPtr) = (checkResult . liftIO . tango_unlock) prox
 withLocked :: (MonadUnliftIO m) => DeviceProxy -> m () -> m ()
 withLocked device f = bracket (lockDevice device) (\_ -> unlockDevice device) (const f)
 
+-- | Newtype wrapper around milliseconds to make the raw numbers a bit more readable
 newtype Milliseconds = Milliseconds Int
 
 instance Show Milliseconds where
   show (Milliseconds ms) = show ms <> "ms"
 
+-- | Set timeout for this device (relates to most operations: reading an attribute, executing a command)
 setTimeout :: (MonadUnliftIO m) => DeviceProxy -> Milliseconds -> m ()
 setTimeout (DeviceProxy proxy) (Milliseconds ms) = liftIO $ checkResult $ tango_set_timeout_millis proxy (fromIntegral ms)
 
+-- | Get current timeout for this device
 getTimeout :: (MonadUnliftIO m) => DeviceProxy -> m Milliseconds
 getTimeout (DeviceProxy proxy) = liftIO $ with 0 \intPtr -> do
   checkResult (tango_get_timeout_millis proxy intPtr)
   intValue <- peek intPtr
   pure (Milliseconds (fromIntegral intValue))
 
+-- | Enable polling for a command (see 'stopPollCommand' to stop it)
 pollCommand :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> Milliseconds -> m ()
 pollCommand (DeviceProxy proxy) (CommandName commandName) (Milliseconds ms) = liftIO $ withCStringText commandName \commandNameC -> checkResult (tango_poll_command proxy commandNameC (fromIntegral ms))
 
+-- | Disable polling for a command (see 'pollCommand')
 stopPollCommand :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> m ()
 stopPollCommand (DeviceProxy proxy) (CommandName commandName) = liftIO $ withCStringText commandName (checkResult . tango_stop_poll_command proxy)
 
+-- | Enable polling for an attribute (see 'stopPollAttribute' to stop it)
 pollAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Milliseconds -> m ()
 pollAttribute (DeviceProxy proxy) (AttributeName attributeName) (Milliseconds ms) = liftIO $ withCStringText attributeName \attributeNameC -> checkResult (tango_poll_attribute proxy attributeNameC (fromIntegral ms))
 
+-- | Disable polling for an attribute (see 'pollAttribute')
 stopPollAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m ()
 stopPollAttribute (DeviceProxy proxy) (AttributeName attributeName) = liftIO $ withCStringText attributeName (checkResult . tango_stop_poll_attribute proxy)
 
+-- | Where to display this command (in Jive, for example)
 data DisplayLevel = Operator | Expert deriving (Show, Enum, Bounded, Eq)
 
+-- | All information Tango has on a command
 data CommandInfo = CommandInfo
   { commandInfoName :: !Text,
     commandInfoTag :: !Int,
@@ -1496,6 +1614,7 @@ convertCommandInfo (HaskellCommandInfo {cmdName, cmdTag, cmdInType, cmdOutType, 
     <*> peekCStringText cmdOutTypeDesc
     <*> pure (toEnum (fromIntegral cmdDisplayLevel))
 
+-- | Get a list of all commands for the device (see 'commandQuery' if you know the command name)
 commandListQuery :: (MonadUnliftIO m) => DeviceProxy -> m [CommandInfo]
 commandListQuery (DeviceProxy proxy) = liftIO $ with (HaskellCommandInfoList 0 nullPtr) \infoListPtr -> do
   checkResult (tango_command_list_query proxy infoListPtr)
@@ -1505,6 +1624,7 @@ commandListQuery (DeviceProxy proxy) = liftIO $ with (HaskellCommandInfoList 0 n
   tango_free_CommandInfoList infoListPtr
   pure result
 
+-- | Get info for a single command of the device (see 'commandListQuery' for all commands)
 commandQuery :: (MonadUnliftIO m) => DeviceProxy -> CommandName -> m CommandInfo
 commandQuery (DeviceProxy proxy) (CommandName commandName) = liftIO $ withCStringText commandName \commandNamePtr -> alloca \commandInfoPtr -> do
   checkResult (tango_command_query proxy commandNamePtr commandInfoPtr)
@@ -1513,6 +1633,7 @@ commandQuery (DeviceProxy proxy) (CommandName commandName) = liftIO $ withCStrin
   tango_free_CommandInfo commandInfoPtr
   pure result
 
+-- | Get a list of all attributes inside the device
 getAttributeNames :: (MonadUnliftIO m) => DeviceProxy -> m [AttributeName]
 getAttributeNames (DeviceProxy proxy) = liftIO $ with (HaskellTangoVarArray 0 nullPtr) \nameListPtr -> do
   checkResult (tango_get_attribute_list proxy nameListPtr)
