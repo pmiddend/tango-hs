@@ -6,12 +6,14 @@ jobs:
     # at the time of writing, ubuntu-latest was 22, which had tango-9.2, which gave weird C++ compilation errors
     # so we switched to 24, which had tango 9.5, which worked fine
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        ghc: ['9.4', '9.6', '9.8', '9.10']
     steps:
     - uses: actions/checkout@v4
     - uses: haskell-actions/setup@v2
       with:
-        # this was just the ghc/cabal version we've been using at the time this file was written
-        ghc-version: '9.6'
+        ghc-version: ${{ matrix.ghc }}
         cabal-version: '3.10.2.1'
     - name: install libtango-dev
       run: sudo apt-get install -y libtango-dev
