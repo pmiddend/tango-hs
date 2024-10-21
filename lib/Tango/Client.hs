@@ -26,6 +26,12 @@
 -- possibility, too, if the need arises) and /image/ types to the
 -- 'Image' type which, again, uses lists intenally.
 --
+-- == IO
+--
+-- The higher-level functions in this module are in 'MonadIO' instead
+-- of just 'IO' so you can easily use them in your monad transformer
+-- stacks.
+--
 -- == Errors
 --
 -- Errors are thrown as exceptions of type 'TangoException'. User errors (such as reading a string attribute with a "read int" function) are thrown via 'error' instead.
@@ -287,7 +293,7 @@ import Tango.Raw.Common
   )
 import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
-import UnliftIO (MonadUnliftIO, bracket)
+import UnliftIO (MonadUnliftIO, bracket, finally)
 import qualified UnliftIO
 import UnliftIO.Environment (getArgs, getProgName)
 import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castCCharToChar, castPtr, free, new, newArray, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
@@ -355,7 +361,7 @@ cboolToBool x
 newDeviceProxy :: forall m. (MonadUnliftIO m) => TangoUrl -> m DeviceProxy
 newDeviceProxy (TangoUrl url) = liftIO $
   alloca $ \proxyPtrPtr -> do
-    withCString (unpack url) $ \proxyName -> do
+    withcstring (unpack url) $ \proxyName -> do
       checkResult (tango_create_device_proxy proxyName proxyPtrPtr)
       DeviceProxy <$> peek proxyPtrPtr
 
@@ -736,6 +742,20 @@ writeLong64ImageAttribute proxy attributeName newImage =
 -- | Newtype wrapper to wrap an attribute name
 newtype AttributeName = AttributeName Text deriving (Show)
 
+withReadAttribute :: (MonadIO m, MonadUnliftIO m) => DeviceProxyPtr -> CString -> (HaskellAttributeData -> m a) -> m a
+withReadAttribute proxyPtr attributeNameC f = alloca \haskellAttributeDataPtr -> do
+  liftIO $ checkResult (tango_read_attribute proxyPtr attributeNameC haskellAttributeDataPtr)
+  haskellAttributeData <- liftIO $ peek haskellAttributeDataPtr
+  finally (f haskellAttributeData) (liftIO $ tango_free_AttributeData haskellAttributeDataPtr)
+
+withAttributeGeneral :: (MonadIO m, MonadUnliftIO m) => (HaskellAttributeData -> m (Maybe a)) -> DeviceProxy -> AttributeName -> (a -> m b) -> m b
+withAttributeGeneral extractValue (DeviceProxy proxyPtr) (AttributeName attributeNameHaskell) f =
+  withCStringText attributeNameHaskell $ \attributeNameC -> withReadAttribute proxyPtr attributeNameC \haskellAttributeData -> do
+    extractedValue <- extractValue haskellAttributeData
+    case extractedValue of
+      Nothing -> error ("invalid type for attribute \"" <> unpack attributeNameHaskell <> "\"")
+      Just v -> f v
+
 readAttributeGeneral :: (MonadIO m) => (HaskellAttributeData -> IO (Maybe a)) -> DeviceProxy -> AttributeName -> m a
 readAttributeGeneral extractValue (DeviceProxy proxyPtr) (AttributeName attributeNameHaskell) =
   liftIO $ withCStringText attributeNameHaskell $ \attributeName -> do
@@ -751,14 +771,13 @@ readAttributeGeneral extractValue (DeviceProxy proxyPtr) (AttributeName attribut
 data AtLeastTwo a = AtLeastTwo a a [a]
 
 readAttributeSimple ::
-  (MonadIO m, Storable a, Show a) =>
+  (MonadIO m, Storable a, Show a, MonadUnliftIO m) =>
   (HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray a)) ->
   (HaskellAttributeData -> AtLeastTwo a -> m b) ->
   DeviceProxy ->
   AttributeName ->
   m b
-readAttributeSimple extractValue convertValue proxy attributeName = do
-  (attributeData, tangoArray) <- readAttributeGeneral (\d -> pure ((d,) <$> extractValue (tangoAttributeData d))) proxy attributeName
+readAttributeSimple extractValue convertValue proxy attributeName = withAttributeGeneral (\d -> pure ((d,) <$> extractValue (tangoAttributeData d))) proxy attributeName \(attributeData, tangoArray) -> do
   arrayElements <- peekArray (fromIntegral (varArrayLength tangoArray)) (varArrayValues tangoArray)
   case arrayElements of
     (first : second : rest) -> convertValue attributeData (AtLeastTwo first second rest)

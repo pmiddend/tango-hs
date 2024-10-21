@@ -43,10 +43,8 @@ main =
       (TangoValue enumResultRead' enumResultWrite') <- readEnumAttribute proxy (AttributeName "enum_scalar")
       putStrLn $ "enum_scalar (as Haskell enum) is " <> show (enumResultRead' :: ScalarEnum)
 
-      -- stringImage <- readStringImageAttribute proxy (AttributeName "string_image_ro")
-      -- putStrLn "string image contents follow:"
-      -- mapM_ TIO.putStrLn (imageContent stringImage)
-      -- putStrLn "string image end"
+      stringScalar <- readStringAttribute proxy (AttributeName "string_scalar")
+      TIO.putStrLn $ "string scalar: " <> tangoValueRead stringScalar
 
       floatResultAsReal <- readRealAttribute proxy (AttributeName "float_scalar")
       doubleResultAsReal <- readRealAttribute proxy (AttributeName "double_scalar")
