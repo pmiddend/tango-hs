@@ -53,7 +53,7 @@ module Tango.Client
     AttributeInfo (..),
     getConfigsForAttributes,
     getConfigForAttribute,
-    TangoValue (TangoValue),
+    TangoValue (TangoValue, tangoValueRead, tangoValueWrite),
     Image (Image, imageContent, imageDimX, imageDimY),
     readIntegralAttribute,
     writeIntegralAttribute,
@@ -318,7 +318,7 @@ checkResult action = do
 -- | Newtype wrapper around a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@. Retrieve via 'parseTangoUrl'
 newtype TangoUrl = TangoUrl Text
 
--- | Try to parse a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@.
+-- | Try to parse a Tango URL like @tango:\/\/host:port\/foo\/bar\/baz@ (the left side of the @Either@ will be an error message)
 parseTangoUrl :: Text -> Either Text TangoUrl
 parseTangoUrl url =
   let tangoUrlFromText' url' =
@@ -807,15 +807,22 @@ convertGenericImage' (HaskellAttributeData {dimX, dimY}) (AtLeastTwo first secon
             (Image writeValue (fromIntegral dimX) (fromIntegral dimY))
         )
 
+-- | Represents an attribute's value, with read and write part, for different data types. Fields for quality etc. are currently missing
 data TangoValue a = TangoValue
-  { tangoValueRead :: a,
+  { -- | Read part of the attribute's value
+    tangoValueRead :: a,
+    -- | Write part of the attribute's value
     tangoValueWrite :: a
   }
   deriving (Show)
 
+-- | Represents an image attribute's value
 data Image a = Image
-  { imageContent :: ![a],
+  { -- | Image pixels
+    imageContent :: ![a],
+    -- | X dimension of the image
     imageDimX :: !Int,
+    -- | Y dimension of the image
     imageDimY :: !Int
   }
   deriving (Show, Functor)

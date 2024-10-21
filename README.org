@@ -85,6 +85,7 @@ main =
 - Server: Everything
 - Client
   1. Event callbacks
+  2. Dynamic attribute properties such as the "quality" (currently we're only exporting read/write value)
 
 ** Interesting links/documentation
 
