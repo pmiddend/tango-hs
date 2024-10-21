@@ -1,0 +1,23 @@
+# Taken liberally from https://github.com/marketplace/actions/install-nix
+name: "Build with Ubuntu"
+on: [push]
+jobs:
+  build:
+    # at the time of writing, ubuntu-latest was 22, which had tango-9.2, which gave weird C++ compilation errors
+    # so we switched to 24, which had tango 9.5, which worked fine
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - uses: haskell-actions/setup@v2
+      with:
+        # this was just the ghc/cabal version we've been using at the time this file was written
+        ghc-version: '9.6'
+        cabal-version: '3.10.2.1'
+    - name: install libtango-dev
+      run: sudo apt-get install -y libtango-dev
+    - name: cabal update
+      run: cabal update
+    - name: build hs-tango with cabal
+      run: cabal build
+    - name: run example program with cabal, expecting failure
+      run: cabal run tango-read-test-device || true
