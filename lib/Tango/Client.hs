@@ -21,6 +21,11 @@
 -- 'Int', unless it's about actual payload data (attributes and
 -- commands), where the appropriately sized types are used.
 --
+-- Generally speaking, we convert /spectrum/ types to /Haskell lists/
+-- (a vector would have been an option, and maybe we add that
+-- possibility, too, if the need arises) and /image/ types to the
+-- 'Image' type which, again, uses lists intenally.
+--
 -- == Errors
 --
 -- Errors are thrown as exceptions of type 'TangoException'. User errors (such as reading a string attribute with a "read int" function) are thrown via 'error' instead.
@@ -827,7 +832,7 @@ data Image a = Image
   }
   deriving (Show, Functor)
 
--- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert to 'Int'
+-- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally.
 readIntegralAttribute :: forall m i. (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
 readIntegralAttribute = readAttributeSimple' extractIntegral (convertGenericScalar id)
 
@@ -837,11 +842,11 @@ extractIntegral (HaskellAttributeDataLongArray a) = do
   pure $ Just (fromIntegral <$> arrayElements)
 extractIntegral _ = pure Nothing
 
--- | Read a spectrum attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally
+-- | Read a spectrum attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally.
 readIntegralSpectrumAttribute :: (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
 readIntegralSpectrumAttribute = readAttributeSimple' extractIntegral convertGenericSpectrum'
 
--- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally
+-- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally.
 readIntegralImageAttribute :: (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
 readIntegralImageAttribute = readAttributeSimple' extractIntegral convertGenericImage'
 
@@ -854,15 +859,15 @@ extractReal (HaskellAttributeDataFloatArray a) = do
   pure $ Just (realToFrac <$> arrayElements)
 extractReal _ = pure Nothing
 
--- | Read an attribute irrespective of the concrete real type. This just uses 'realToFrac' internally to convert to 'Int'
+-- | Read an attribute irrespective of the concrete real type. This just uses 'realToFrac' internally.
 readRealAttribute :: forall m i. (MonadUnliftIO m, Fractional i, Real i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
 readRealAttribute = readAttributeSimple' extractReal (convertGenericScalar id)
 
--- | Read a spectrum attribute irrespective of the concrete real element type. This just uses 'realToFrac' internally
+-- | Read a spectrum attribute irrespective of the concrete real element type. This just uses 'realToFrac' internally.
 readRealSpectrumAttribute :: (MonadUnliftIO m, Real i, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
 readRealSpectrumAttribute = readAttributeSimple' extractReal convertGenericSpectrum'
 
--- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'fromIntegral' internally
+-- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'realToFrac' internally.
 readRealImageAttribute :: (MonadUnliftIO m, Real i, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
 readRealImageAttribute = readAttributeSimple' extractReal convertGenericImage'
 
@@ -870,16 +875,19 @@ extractBool :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CBool)
 extractBool (HaskellAttributeDataBoolArray a) = Just a
 extractBool _ = Nothing
 
+-- | Read a boolean-type scalar attribute, fail hard if it's not really a bool
 readBoolAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Bool)
 readBoolAttribute = readAttributeSimple extractBool (convertGenericScalar cboolToBool)
 
+-- | Read a boolean-type spectrum (list) attribute, fail hard if it's not really a bool
 readBoolSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue [Bool])
 readBoolSpectrumAttribute = readAttributeSimple extractBool (convertGenericSpectrum cboolToBool)
 
+-- | Read a boolean-type image attribute, fail hard if it's not really a bool
 readBoolImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue (Image Bool))
 readBoolImageAttribute = readAttributeSimple extractBool (convertGenericImage cboolToBool)
 
--- | Read a string attribute and decode it into a text
+-- | Read a string attribute and decode it into a text, fail hard if it's not really a string.
 readStringAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m (TangoValue Text)
 readStringAttribute = readAttributeSimple extract convert
   where
