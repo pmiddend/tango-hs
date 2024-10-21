@@ -2,7 +2,7 @@
 
 [[https://www.gnu.org/licenses/gpl-3.0][https://img.shields.io/badge/License-GPLv3-blue.svg]]
 [[Hackage][https://img.shields.io/hackage/v/hs-tango.svg]]
-[[CI][https://github.com/pmiddend/tango-hs/actions/workflows/build-with-ubuntu.yaml/badge.svg]]
+[[CI][https://github.com/pmiddend/hs-tango/actions/workflows/build-with-ubuntu.yaml/badge.svg]]
 
 
 ** How to install
