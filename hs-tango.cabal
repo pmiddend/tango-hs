@@ -18,32 +18,51 @@ maintainer:         philipp.middendorf@desy.de
 category:           Text
 build-type:         Simple
 extra-doc-files:    Changelog
+                  , README.org
+extra-source-files: c_tango/src/c_tango_attribute.cpp
+                  , c_tango/src/c_tango_command.cpp
+                  , c_tango/src/c_tango_dbase.cpp
+                  , c_tango/src/c_tango_proxy.cpp
+                  , c_tango/src/c_tango.h
 
 common warnings
     ghc-options: -Wall -Wno-unused-imports
 
 library
-    import:            warnings
-    exposed-modules:   Tango.Raw.Common
-                     , Tango.Client
-    build-depends:     base
-                     , text
-                     , derive-storable
-                     , unliftio
-                     , time
-                     , aeson
-                     , bifunctors
-                     , lens
-                     , free
-                     , transformers
-                     , containers
-                     , mtl
+    import:              warnings
+    exposed-modules:     Tango.Raw.Common
+                       , Tango.Client
+    build-depends:       base
+                       , text
+                       , derive-storable
+                       , unliftio
+                       , time
+                       , aeson
+                       , bifunctors
+                       , lens
+                       , free
+                       , transformers
+                       , containers
+                       , mtl
     hs-source-dirs:    lib
-    ghc-options:       -threaded -rtsopts
-    -- include-dirs: c_tango/src
+    ghc-options:       -threaded
+    include-dirs:      c_tango/src
     hsc2hs-options:    -k --define=CABAL_BINDGEN=1
-    pkgconfig-depends: ctango
+    pkgconfig-depends: tango
     default-language:  Haskell2010
+    cxx-sources:       c_tango/src/c_tango_attribute.cpp
+                     , c_tango/src/c_tango_command.cpp
+                     , c_tango/src/c_tango_dbase.cpp
+                     , c_tango/src/c_tango_proxy.cpp
+    -- copied blindly from https://github.com/joe-warren/opencascade-hs/blob/5c087f893712585703eb8bb0ce017b6fa2a4b984/opencascade-hs/opencascade-hs.cabal
+    other-modules:     Paths_hs_tango
+                     , PackageInfo_hs_tango
+    -- copied blindly from https://github.com/joe-warren/opencascade-hs/blob/5c087f893712585703eb8bb0ce017b6fa2a4b984/opencascade-hs/opencascade-hs.cabal
+    autogen-modules:   Paths_hs_tango
+                     , PackageInfo_hs_tango
+    -- copied from https://github.com/joe-warren/opencascade-hs/blob/5c087f893712585703eb8bb0ce017b6fa2a4b984/opencascade-hs/opencascade-hs.cabal
+    -- otherwise: undefined reference to operator new
+    extra-libraries: stdc++
 
 benchmark tango-read-test-device
   type: exitcode-stdio-1.0

@@ -19,29 +19,12 @@
             inherit system;
             overlays = [ tango-controls.overlays.default ];
           };
-          ctango = pkgs.stdenv.mkDerivation
-            {
-              pname = "ctango";
-              version = "1.0";
-
-              src = c_tango/.;
-
-              nativeBuildInputs = with pkgs; [ cmake pkg-config ];
-              buildInputs = with pkgs; [
-                my-cpptango
-                zeromq
-                cppzmq
-                omniorb_4_2
-                libjpeg_turbo
-                libsodium
-              ];
-            };
 
           haskellPackages = pkgs.haskellPackages.override {
             overrides = self: super: {
               log-base = pkgs.haskell.lib.markUnbroken super.log-base;
               hs-tango = self.callCabal2nix packageName ./. {
-                inherit ctango;
+                # inherit ctango;
               };
             };
           };
@@ -57,8 +40,6 @@
           packages.${packageName} = haskellPackages.hs-tango;
 
           packages.default = self.packages.${system}.${packageName};
-
-          packages.ctango = ctango;
 
           defaultPackage = self.packages.${system}.default;
 
@@ -87,7 +68,6 @@
                 omniorb_4_2
                 libjpeg_turbo
                 libsodium
-                self.packages.${system}.ctango
               ];
               packages = hpkgs: [ hpkgs.hs-tango ];
             };
