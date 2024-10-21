@@ -248,7 +248,6 @@ module Tango.Client
 where
 
 import Control.Applicative (Applicative, pure, (<*>))
-import Control.Applicative.Free (Ap, liftAp, runAp, runAp_)
 import Control.Exception (Exception, throw)
 import Control.Monad (fail, forM_, mapM_, void, when, (>>=))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
