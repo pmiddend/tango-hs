@@ -26,19 +26,15 @@ extra-source-files: c_tango/src/c_tango_attribute.cpp
                   , c_tango/src/c_tango.h
 
 common warnings
-    ghc-options: -Wall -Wno-unused-imports
+    ghc-options: -Wall
 
 library
     import:              warnings
     exposed-modules:     Tango.Raw.Common
                        , Tango.Client
-    build-depends:       base >= 4.18.2 && < 5,
-                         containers >= 0.6.7 && < 0.7,
+    build-depends:       base >= 4.17.0 && < 5,
                          derive-storable >= 0.3.1 && < 0.4,
-                         mtl >= 2.3.1 && < 2.4,
-                         transformers >= 0.6.1 && < 0.7,
-                         text >= 2.0.2 && < 2.1,
-                         time >= 1.12.2 && < 1.13,
+                         text >= 2.0.2 && < 3,
                          unliftio >= 0.2.25 && < 0.3
     hs-source-dirs:    lib
     ghc-options:       -threaded

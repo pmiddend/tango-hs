@@ -55,7 +55,11 @@ main =
 - Client
   1. Event callbacks
   2. Dynamic attribute properties such as the "quality" (currently we're only exporting read/write value)
+** Rationale for the used dependencies
 
+- =derive-storable= so that we can just declare data types as records, and have C =Storable= instances generated
+- =text= to replace =String= for textual data (=ByteString= might have been an option, we haven't decided yet)
+- =unliftio= to have the opssibility to have code running in =MonadIO=
 ** Interesting links/documentation
 
 - [[https://www.esrf.fr/computing/cs/tango/tango_doc/kernel_doc/cpp_doc/classTango_1_1DeviceProxy.html][DeviceProxy C++ API reference]]

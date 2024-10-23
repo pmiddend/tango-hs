@@ -249,37 +249,32 @@ where
 
 import Control.Applicative (Applicative, pure, (<*>))
 import Control.Exception (Exception, throw)
-import Control.Monad (fail, forM_, mapM_, void, when, (>>=))
-import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Control.Monad (void, when, (>>=))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (Bool (False, True), otherwise, (||))
-import Data.Char (Char)
 import Data.Either (Either (Left, Right))
-import Data.Eq (Eq ((==)), (/=))
+import Data.Eq (Eq, (/=))
 import Data.Foldable (any)
 import Data.Function (const, id, ($), (.))
 import Data.Functor (Functor, (<$>))
-import Data.Int (Int, Int16, Int32, Int64)
-import Data.List (drop, head, length, singleton, splitAt)
-import Data.Maybe (Maybe (Just, Nothing), listToMaybe, maybe)
-import Data.Ord (max, (>))
+import Data.Int (Int, Int16, Int64)
+import Data.List (drop, head, length, splitAt)
+import Data.Maybe (Maybe (Just, Nothing))
+import Data.Ord ((>))
 import Data.Semigroup ((<>))
-import Data.String (String, unlines)
-import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, strip, unpack)
-import Data.Text.IO (putStrLn)
+import Data.Text (Text, intercalate, isPrefixOf, null, pack, splitOn, unpack)
 import Data.Traversable (traverse)
-import Data.Word (Word16, Word32, Word64, Word8)
+import Data.Word (Word16, Word64)
 import Foreign (Storable)
 import Foreign.C.String (CString)
 import Foreign.Ptr (Ptr, nullPtr)
-import System.IO (IO, print)
+import System.IO (IO)
 import Tango.Raw.Common
   ( DatabaseProxyPtr,
     DevFailed (DevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     DeviceProxyPtr,
-    HaskellAttrWriteType (Read, ReadWrite),
+    HaskellAttrWriteType,
     HaskellAttributeData (..),
-    HaskellAttributeDataList (attributeDataListSequence),
     HaskellAttributeInfoList (HaskellAttributeInfoList, attributeInfoListLength, attributeInfoListSequence),
     HaskellCommandData (..),
     HaskellCommandInfo (..),
@@ -319,10 +314,8 @@ import Tango.Raw.Common
     tango_delete_device_proxy,
     tango_free_AttributeData,
     tango_free_AttributeInfoList,
-    tango_free_CommandData,
     tango_free_CommandInfo,
     tango_free_CommandInfoList,
-    tango_free_DbData,
     tango_free_DbDatum,
     tango_free_VarStringArray,
     tango_get_attribute_config,
@@ -332,7 +325,6 @@ import Tango.Raw.Common
     tango_get_device_property,
     tango_get_object_list,
     tango_get_object_property_list,
-    tango_get_property,
     tango_get_timeout_millis,
     tango_lock,
     tango_poll_attribute,
@@ -348,10 +340,8 @@ import Tango.Raw.Common
 import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
 import UnliftIO (MonadUnliftIO, bracket, finally)
-import qualified UnliftIO
-import UnliftIO.Environment (getArgs, getProgName)
-import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, FunPtr, alloca, castCCharToChar, castPtr, free, new, newArray, newCString, peek, peekArray, peekCString, poke, with, withArray, withCString)
-import Prelude (Bounded, Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, div, error, fromIntegral, realToFrac, undefined)
+import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, alloca, free, new, newArray, newCString, peek, peekArray, peekCString, with, withArray, withCString)
+import Prelude (Bounded, Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, error, fromIntegral, realToFrac)
 
 -- | This wraps the Tango exception trace in Haskell
 newtype TangoException = TangoException [DevFailed Text] deriving (Show)
