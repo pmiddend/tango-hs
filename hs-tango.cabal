@@ -16,8 +16,8 @@ license:            MIT
 license-file:       LICENSE
 author:             DESY
 maintainer:         philipp.middendorf@desy.de
--- copyright:
-category:           Text
+copyright:          2024 Philipp Middendorf
+category:           Bindings, Client, Distributed Systems, FFI, Foreign, Hardware, Science
 build-type:         Simple
 extra-doc-files:    Changelog
                   , README.org
