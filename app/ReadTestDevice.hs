@@ -5,7 +5,9 @@
 
 module Main where
 
+import Control.Concurrent (newChan, readChan, writeChan)
 import Control.Monad (forM_)
+import Control.Monad.IO.Class (liftIO)
 import Data.Int (Int16)
 import Data.Text.IO qualified as TIO
 import Tango.Client
@@ -13,6 +15,35 @@ import Tango.Client
 data ScalarEnum = Label0 | Label1 | Label2 deriving (Enum, Show)
 
 main =
+  case parseTangoUrl "sys/tg_test/1" of
+    Left e -> error "couldn't resolve tango URL"
+    Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do
+      aconfig <- getConfigForAttribute proxy (AttributeName "boolean_scalar")
+      print aconfig
+
+main3 =
+  case parseTangoUrl "sys/tg_test/1" of
+    Left e -> error "couldn't resolve tango URL"
+    Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do
+      timeout <- getTimeout proxy
+
+      chan <- newChan
+
+      let attributeName = AttributeName "boolean_scalar"
+          eventCallback attribute bool = liftIO do
+            boolValue <- readBoolAttribute proxy attributeName
+            putStrLn $ "got a change: " <> show boolValue
+            writeChan chan True
+
+      pollAttribute proxy attributeName (Milliseconds 2000)
+
+      withSubscribedEvent proxy attributeName ChangeEvent False eventCallback do
+        forM_ [0 .. 2] \_ -> do
+          putStrLn "waiting for change"
+          _ <- readChan chan
+          putStrLn "received change"
+
+main2 =
   case parseTangoUrl "sys/tg_test/1" of
     Left e -> error "couldn't resolve tango URL"
     Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do

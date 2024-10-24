@@ -295,6 +295,7 @@ void tango_free_AttributeInfoList(AttributeInfoList *attribute_info_list)
     free(attribute_info_list->sequence[i].min_alarm);
     free(attribute_info_list->sequence[i].max_alarm);
     free(attribute_info_list->sequence[i].writable_attr_name);
+    free(attribute_info_list->sequence[i].root_attr_name);
     for (uint16_t j = 0; j < attribute_info_list->sequence[i].enum_labels_count; ++j)
       free(attribute_info_list->sequence[i].enum_labels[j]);
     if (attribute_info_list->sequence[i].enum_labels_count > 0)
@@ -567,6 +568,9 @@ static void convert_attr_query(Tango::AttributeInfoEx &tango_attr_info, Attribut
     attr_info->enum_labels = nullptr;
   }
   attr_info->enum_labels_count = static_cast<uint16_t>(enum_label_count);
+
+  attr_info->root_attr_name = strdup(tango_attr_info.root_attr_name.c_str());
+  attr_info->memorized = (TangoAttrMemorizedType)tango_attr_info.memorized;
 }
 
 ErrorStack *tango_poll_attribute(void *db_proxy, char const *cmd_name, int polling_period)

@@ -15,7 +15,7 @@ module Tango.Raw.Common
     HaskellDispLevel (..),
     HaskellTangoPropertyData (..),
     HaskellTangoDevEncoded (..),
-    HaskellTangoEventType (..),
+    EventType (..),
     HaskellAttrWriteType (..),
     ErrSeverity (..),
     DatabaseProxyPtr,
@@ -32,6 +32,7 @@ module Tango.Raw.Common
     HaskellDevSource (..),
     HaskellErrorStack (..),
     DevFailed (..),
+    TangoAttrMemorizedType (..),
     HaskellAttributeData (..),
     HaskellCommandData (..),
     HaskellTangoDataType (..),
@@ -146,6 +147,19 @@ instance Storable HaskellTangoDevState where
   alignment _ = (# alignment TangoDevState)
   peek = peekBounded "dev state"
   poke = pokeBounded "dev state"
+
+data TangoAttrMemorizedType
+  = NotKnown
+  | None
+  | Memorized
+  | MemorizedWriteInit
+  deriving (Show, Eq, Bounded, Enum)
+
+instance Storable TangoAttrMemorizedType where
+  sizeOf _ = (# size TangoAttrMemorizedType)
+  alignment _ = (# alignment TangoAttrMemorizedType)
+  peek = peekBounded "TangoAttrMemorizedType"
+  poke = pokeBounded "TangoAttrMemorizedType"
 
 data HaskellDevSource
   = Dev
@@ -291,19 +305,29 @@ instance Storable HaskellTangoDataType where
   peek = peekBounded "data type"
   poke = pokeBounded "data type"
 
-data HaskellTangoEventType
-  = HaskellEventTypeChangeEvent
-  | HaskellEventTypeQualityEvent
-  | HaskellEventTypePeriodicEvent
-  | HaskellEventTypeArchiveEvent
-  | HaskellEventTypeUserEvent
-  | HaskellEventTypeAttrConfEvent
-  | HaskellEventTypeDataReadyEvent
-  | HaskellEventTypeInterfaceChangeEvent
-  | HaskellEventTypePipeEvent
+-- | Event type if you want to subscribe to events. The events are losely described [in the Tango docs](https://tango-controls.readthedocs.io/en/latest/development/client-api/cpp-client-programmers-guide.html#events-tangoclient)
+data EventType
+  = -- | It is a type of event that gets fired when the associated attribute changes its value according to its configuration specified in system specific attribute properties (@abs_change@ and @rel_change@).
+    ChangeEvent
+  | -- | An “alarming” (or quality) subset of change events to allow clients to monitor when attributes’ quality factors are either Tango::ATTR_WARNING or Tango::ATTR_ALARM, without receiving unneeded events relating to value changes.
+    QualityEvent
+  | -- | It is a type of event that gets fired at a fixed periodic interval.
+    PeriodicEvent
+  | -- | An event is sent if one of the archiving conditions is satisfied. Archiving conditions are defined via properties in the database. These can be a mixture of delta_change and periodic. Archive events can be send from the polling thread or can be manually pushed from the device server code (@DeviceImpl::push_archive_event()@).
+    ArchiveEvent
+  | -- | The criteria and configuration of these user events are managed by the device server programmer who uses a specific method of one of the Tango device server class to fire the event (@DeviceImpl::push_event()@).
+    UserEvent
+  | -- | An event is sent if the attribute configuration is changed.
+    AttrConfEvent
+  | -- | This event is sent when coded by the device server programmer who uses a specific method of one of the Tango device server class to fire the event (@DeviceImpl::push_data_ready_event()@). The rule of this event is to inform a client that it is now possible to read an attribute. This could be useful in case of attribute with many data.
+    DataReadyEvent
+  | -- | This event is sent when the device interface changes. Using Tango, it is possible to dynamically add/remove attribute/command to a device. This event is the way to inform client(s) that attribute/command has been added/removed from a device.
+    InterfaceChangeEvent
+  | -- | This is the kind of event which has to be used when the user want to push data through a pipe. This kind of event is only sent by the user code by using a specific method (@DeviceImpl::push_pipe_event()@).
+    PipeEvent
   deriving (Show, Eq, Ord, Bounded, Enum)
 
-instance Storable HaskellTangoEventType where
+instance Storable EventType where
   sizeOf _ = (# size TangoEventType)
   alignment _ = (# alignment TangoEventType)
   peek = peekBounded "event type"
@@ -467,8 +491,10 @@ data HaskellAttributeInfo = HaskellAttributeInfo
     attributeInfoMaxAlarm :: !CString,
     attributeInfoWritableAttrName :: !CString,
     attributeInfoDispLevel :: !HaskellDispLevel,
-    attributeInfoEnumLabels :: Ptr CString,
-    attributeInfoEnumLabelsCount :: Word16
+    attributeInfoEnumLabels :: !(Ptr CString),
+    attributeInfoEnumLabelsCount :: !Word16,
+    attributeInfoRootAttrName :: !CString,
+    attributeInfoMemorized :: !TangoAttrMemorizedType
   }
   deriving (Show, Generic)
 

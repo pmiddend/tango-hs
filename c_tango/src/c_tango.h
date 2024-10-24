@@ -88,6 +88,14 @@ typedef enum
 
 typedef enum
 {
+    NOT_KNOWN,
+    NONE,
+    MEMORIZED,
+    MEMORIZED_WRITE_INIT
+} TangoAttrMemorizedType;
+
+typedef enum
+{
   ON,
   OFF,
   CLOSE,
@@ -399,6 +407,8 @@ typedef struct
   DispLevel disp_level;
   char **enum_labels;
   uint16_t enum_labels_count;
+  char *root_attr_name;
+  TangoAttrMemorizedType memorized;
 } AttributeInfo;
 
 typedef struct

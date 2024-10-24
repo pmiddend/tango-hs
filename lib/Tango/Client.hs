@@ -223,6 +223,13 @@ module Tango.Client
     deleteDeviceProperties,
     HaskellTangoDevState (..),
 
+    -- * Events
+    subscribeEvent,
+    unsubscribeEvent,
+    withSubscribedEvent,
+    SubscribedEvent,
+    EventType (..),
+
     -- * Database proxy
     DatabaseProxy,
     createDatabaseProxy,
@@ -267,12 +274,14 @@ import Data.Traversable (traverse)
 import Data.Word (Word16, Word64)
 import Foreign (Storable)
 import Foreign.C.String (CString)
+import Foreign.C.Types (CInt)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (IO)
 import Tango.Raw.Common
   ( DatabaseProxyPtr,
     DevFailed (DevFailed, devFailedDesc, devFailedOrigin, devFailedReason, devFailedSeverity),
     DeviceProxyPtr,
+    EventType,
     HaskellAttrWriteType,
     HaskellAttributeData (..),
     HaskellAttributeInfoList (HaskellAttributeInfoList, attributeInfoListLength, attributeInfoListSequence),
@@ -303,12 +312,15 @@ import Tango.Raw.Common
     HaskellTangoDevState (..),
     HaskellTangoPropertyData (..),
     HaskellTangoVarArray (..),
+    TangoAttrMemorizedType (..),
     Timeval (..),
+    createEventCallbackWrapper,
     tango_command_inout,
     tango_command_list_query,
     tango_command_query,
     tango_create_database_proxy,
     tango_create_device_proxy,
+    tango_create_event_callback,
     tango_delete_database_proxy,
     tango_delete_device_property,
     tango_delete_device_proxy,
@@ -318,6 +330,7 @@ import Tango.Raw.Common
     tango_free_CommandInfoList,
     tango_free_DbDatum,
     tango_free_VarStringArray,
+    tango_free_event_callback,
     tango_get_attribute_config,
     tango_get_attribute_list,
     tango_get_device_exported,
@@ -334,12 +347,14 @@ import Tango.Raw.Common
     tango_set_timeout_millis,
     tango_stop_poll_attribute,
     tango_stop_poll_command,
+    tango_subscribe_event,
     tango_unlock,
+    tango_unsubscribe_event,
     tango_write_attribute,
   )
 import qualified Tango.Raw.Common as RawCommon
 import Text.Show (Show, show)
-import UnliftIO (MonadUnliftIO, bracket, finally)
+import UnliftIO (MonadUnliftIO, bracket, finally, withRunInIO)
 import UnliftIO.Foreign (CBool, CDouble, CFloat, CLong, CShort, CULong, CUShort, alloca, free, new, newArray, newCString, peek, peekArray, peekCString, with, withArray, withCString)
 import Prelude (Bounded, Double, Enum (fromEnum, toEnum), Float, Fractional, Integral, Num ((*)), Real, error, fromIntegral, realToFrac)
 
@@ -1404,7 +1419,10 @@ data AttributeInfo = AttributeInfo
     attributeInfoMaxAlarm :: !Text,
     attributeInfoWritableAttrName :: !Text,
     attributeInfoDispLevel :: !HaskellDispLevel,
-    attributeInfoEnumLabels :: [Text]
+    attributeInfoEnumLabels :: [Text],
+    -- | Root attribute name (in case of forwarded attribute)
+    attributeInfoRootAttrName :: Text,
+    attributeInfoMemorized :: !TangoAttrMemorizedType
   }
   deriving (Show)
 
@@ -1423,6 +1441,7 @@ convertAttributeInfo ai = do
   writableAttrName <- peekCStringText (RawCommon.attributeInfoWritableAttrName ai)
   enumLabelsList <-
     peekCStringArrayText (RawCommon.attributeInfoEnumLabelsCount ai) (RawCommon.attributeInfoEnumLabels ai)
+  rootAttrName <- peekCStringText (RawCommon.attributeInfoRootAttrName ai)
   pure $
     AttributeInfo
       (RawCommon.attributeInfoWritable ai)
@@ -1443,6 +1462,8 @@ convertAttributeInfo ai = do
       writableAttrName
       (RawCommon.attributeInfoDispLevel ai)
       enumLabelsList
+      rootAttrName
+      (RawCommon.attributeInfoMemorized ai)
 
 -- | Get information on a single attribute (this uses 'getConfigsForAttributes' internally)
 getConfigForAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> m AttributeInfo
@@ -1718,3 +1739,54 @@ databaseSearchObjectPropertiesByName proxy objectName nameFilter = liftIO $ with
   result <- convertDbDatum dbDatum
   tango_free_DbDatum dbDatumPtr
   pure (propertyData result)
+
+-- | Structure holding information on how to unsubscribe from an event again. Feed to 'unsubscribeEvent'
+data SubscribedEvent = SubscribedEvent (Ptr ()) CInt
+
+-- | Callback for an event
+type EventCallback m =
+  AttributeName ->
+  -- | @True@ if an error occurred
+  Bool ->
+  m ()
+
+-- | Subscribe to an event. See 'unsubscribeEvent'
+subscribeEvent ::
+  forall m.
+  (MonadIO m, MonadUnliftIO m) =>
+  DeviceProxy ->
+  AttributeName ->
+  EventType ->
+  -- | The stateless flag = false indicates that the event subscription will only succeed when the given attribute is known and available in the Tango system. Setting stateless = true will make the subscription succeed, even if an attribute of this name was never known. The real event subscription will happen when the given attribute will be available in the Tango system.
+  Bool ->
+  EventCallback m ->
+  m SubscribedEvent
+subscribeEvent (DeviceProxy proxyPtr) attributeName@(AttributeName attributeNameText) eventType stateless eventCallback = withRunInIO \run -> do
+  let realCallback :: Ptr () -> CString -> Bool -> IO ()
+      realCallback _ _ bool = run (eventCallback attributeName bool)
+  convertedCallback <- createEventCallbackWrapper realCallback
+  callbackInTango <- tango_create_event_callback convertedCallback
+  withCStringText attributeNameText \attributeNameC -> do
+    eventId <- tango_subscribe_event proxyPtr attributeNameC (fromIntegral (fromEnum eventType)) callbackInTango (if stateless then 1 else 0)
+    pure (SubscribedEvent callbackInTango eventId)
+
+-- | Unsubscribe from the event, see 'subscribeEvent'
+unsubscribeEvent :: (MonadIO m, MonadUnliftIO m) => DeviceProxy -> SubscribedEvent -> m ()
+unsubscribeEvent (DeviceProxy proxyPtr) (SubscribedEvent callbackPtr eventId) = do
+  liftIO (tango_unsubscribe_event proxyPtr eventId)
+  liftIO (tango_free_event_callback callbackPtr)
+
+-- | Execute an action while being subscribed to the event
+withSubscribedEvent ::
+  (MonadIO m, MonadUnliftIO m) =>
+  DeviceProxy ->
+  AttributeName ->
+  EventType ->
+  -- | The stateless flag = false indicates that the event subscription will only succeed when the given attribute is known and available in the Tango system. Setting stateless = true will make the subscription succeed, even if an attribute of this name was never known. The real event subscription will happen when the given attribute will be available in the Tango system.
+  Bool ->
+  EventCallback m ->
+  -- | Action to perform while we have the subscription
+  m () ->
+  m ()
+withSubscribedEvent proxy attributeName eventType stateless eventCallback f =
+  bracket (subscribeEvent proxy attributeName eventType stateless eventCallback) (unsubscribeEvent proxy) (const f)

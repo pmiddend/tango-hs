@@ -14,7 +14,7 @@ The [[https://tango-controls.readthedocs.io/en/latest/installation/tango-on-linu
 
 If you're using the Nix package manager, you have to enable flakes, and then use the accompanying =flake.nix=. To get Tango, it uses the [[https://gitlab.desy.de/cfel-sc-public/tango-flake][tango-flake]] from your truly. You can simply clone the repository, do =nix develop=, and then =cabal build=.
 ** Usage
-*** Client
+*** Client, reading attributes
 
 There is haddock documentation available. But just to illustrate how to use the library, here's a little client example:
 
@@ -49,12 +49,55 @@ main =
       booleanSpectrumResult <- readBoolSpectrumAttribute proxy (AttributeName "boolean_spectrum")
       putStrLn $ "boolean_spectrum is " <> show booleanSpectrumResult
 #+end_src
+*** Client, subscribing to events
+
+In this example, we are subscribing to changes in the attribute =boolean_scalar= and waiting for two changes (the =forM_= loop).
+
+#+begin_src haskell
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
+module Main where
+
+import Control.Concurrent (newChan, readChan, writeChan)
+import Control.Monad (forM_)
+import Control.Monad.IO.Class (liftIO)
+import Data.Int (Int16)
+import Data.Text.IO qualified as TIO
+import Tango.Client
+
+main =
+  case parseTangoUrl "sys/tg_test/1" of
+    Left e -> error "couldn't resolve tango URL"
+    Right deviceAddress -> withDeviceProxy deviceAddress \proxy -> do
+      timeout <- getTimeout proxy
+
+      chan <- newChan
+
+      let attributeName = AttributeName "boolean_scalar"
+          eventCallback attribute bool = liftIO do
+            boolValue <- readBoolAttribute proxy attributeName
+            putStrLn $ "got a change: " <> show boolValue
+            writeChan chan True
+
+      pollAttribute proxy attributeName (Milliseconds 2000)
+
+      withSubscribedEvent proxy attributeName ChangeEvent False eventCallback do
+        forM_ [0 .. 2] \_ -> do
+          putStrLn "waiting for change"
+          _ <- readChan chan
+          putStrLn "received change"
+#+end_src
+
 ** What's missing
 
 - Server: Everything
 - Client
-  1. Event callbacks
-  2. Dynamic attribute properties such as the "quality" (currently we're only exporting read/write value)
+  + Setting advanced attribute properties, specifically event-related ones like =rel_change= and the period for periodic events. This is no technical difficulty, you just have to write the code.
+  + In event callbacks, it would be good to transport more information like the list of errors, not just a boolean (see cppTango's =event.h=)
+  + Dynamic attribute properties such as the "quality" (currently we're only exporting read/write value)
 ** Rationale for the used dependencies
 
 - =derive-storable= so that we can just declare data types as records, and have C =Storable= instances generated
