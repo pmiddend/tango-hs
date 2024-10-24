@@ -97,8 +97,20 @@ module Tango.Raw.Common
   )
 where
 
+import Control.Applicative (pure)
+import Data.Bool (Bool)
+import Data.Eq (Eq, (==))
+import Data.Foldable (Foldable)
+import Data.Function ((.))
+import Data.Functor (Functor, (<$>))
 import Data.Int (Int32)
-import Data.List (find)
+import Data.List (find, zip)
+import Data.Maybe (Maybe (Just, Nothing))
+import Data.Ord (Ord)
+import Data.Semigroup ((<>))
+import Data.String (String)
+import Data.Traversable (Traversable)
+import Data.Tuple (fst, snd)
 import Data.Word (Word16, Word32, Word64, Word8)
 import Foreign (Storable (alignment, peek, poke, sizeOf), peekByteOff, pokeByteOff)
 import Foreign.C.String (CString, peekCString)
@@ -106,12 +118,15 @@ import Foreign.C.Types (CBool (CBool), CChar, CDouble, CFloat, CInt (CInt), CLon
 import Foreign.Ptr (FunPtr, Ptr, castPtr)
 import Foreign.Storable.Generic (GStorable)
 import GHC.Generics (Generic)
+import System.IO (IO)
+import Text.Show (Show, show)
+import Prelude (Bounded, Enum, error, maxBound, minBound)
 
 #include <c_tango.h>
 -- for timeval
 #include <sys/time.h>
 
-peekBounded :: (Show a, Eq a, Enum a, Bounded a) => String -> Ptr a -> IO a
+peekBounded :: (Enum a, Bounded a) => String -> Ptr a -> IO a
 peekBounded desc ptr = do
   value :: CInt <- peek (castPtr ptr)
   case snd <$> find ((== value) . fst) (zip [0 ..] [minBound .. maxBound]) of

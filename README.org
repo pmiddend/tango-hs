@@ -96,6 +96,7 @@ main =
 - Server: Everything
 - Client
   + Setting advanced attribute properties, specifically event-related ones like =rel_change= and the period for periodic events. This is no technical difficulty, you just have to write the code.
+  + Commands returning or receiving an =UInt32=. I'm not sure how to handle this, since tango has no such data type.
   + In event callbacks, it would be good to transport more information like the list of errors, not just a boolean (see cppTango's =event.h=)
   + Dynamic attribute properties such as the "quality" (currently we're only exporting read/write value)
 ** Rationale for the used dependencies

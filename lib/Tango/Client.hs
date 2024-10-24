@@ -100,11 +100,12 @@ module Tango.Client
 
     -- * Attributes
     AttributeName (AttributeName),
-    AttributeInfo (..),
+    AttributeInfo (AttributeInfo),
     getConfigsForAttributes,
     getConfigForAttribute,
     TangoValue (TangoValue, tangoValueRead, tangoValueWrite),
     Image (Image, imageContent, imageDimX, imageDimY),
+    TangoAttrMemorizedType (NotKnown, None, Memorized, MemorizedWriteInit),
 
     -- ** More general types
 
@@ -221,7 +222,7 @@ module Tango.Client
     getDeviceProperties,
     putDeviceProperties,
     deleteDeviceProperties,
-    HaskellTangoDevState (..),
+    HaskellTangoDevState (Alarm, Close, Disable, Extract, Fault, Init, Insert, Moving, Off, On, Open, Running, Standby, Unknown),
 
     -- * Events
     subscribeEvent,
@@ -264,7 +265,7 @@ import Data.Eq (Eq, (/=))
 import Data.Foldable (any)
 import Data.Function (const, id, ($), (.))
 import Data.Functor (Functor, (<$>))
-import Data.Int (Int, Int16, Int64)
+import Data.Int (Int, Int16, Int32, Int64)
 import Data.List (drop, head, length, splitAt)
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Ord ((>))
@@ -283,15 +284,15 @@ import Tango.Raw.Common
     DeviceProxyPtr,
     EventType,
     HaskellAttrWriteType,
-    HaskellAttributeData (..),
+    HaskellAttributeData (HaskellAttributeData, dataFormat, dataQuality, dataType, dimX, dimY, name, nbRead, tangoAttributeData, timeStamp),
     HaskellAttributeInfoList (HaskellAttributeInfoList, attributeInfoListLength, attributeInfoListSequence),
-    HaskellCommandData (..),
-    HaskellCommandInfo (..),
+    HaskellCommandData (HaskellCommandData, tangoCommandData),
+    HaskellCommandInfo (HaskellCommandInfo, cmdDisplayLevel, cmdInType, cmdInTypeDesc, cmdName, cmdOutType, cmdOutTypeDesc, cmdTag),
     HaskellCommandInfoList (HaskellCommandInfoList, commandInfoLength, commandInfoSequence),
-    HaskellDataFormat (..),
-    HaskellDataQuality (..),
-    HaskellDbData (..),
-    HaskellDbDatum (..),
+    HaskellDataFormat (HaskellImage, HaskellScalar, HaskellSpectrum),
+    HaskellDataQuality (HaskellValid),
+    HaskellDbData (HaskellDbData, dbDataLength, dbDataSequence),
+    HaskellDbDatum (HaskellDbDatum, dbDatumIsEmpty, dbDatumPropData, dbDatumPropertyName, dbDatumWrongDataType),
     HaskellDispLevel,
     HaskellErrorStack (errorStackLength, errorStackSequence),
     HaskellTangoAttributeData
@@ -307,13 +308,13 @@ import Tango.Raw.Common
         HaskellAttributeDataULongArray,
         HaskellAttributeDataUShortArray
       ),
-    HaskellTangoCommandData (..),
-    HaskellTangoDataType (..),
-    HaskellTangoDevState (..),
-    HaskellTangoPropertyData (..),
-    HaskellTangoVarArray (..),
-    TangoAttrMemorizedType (..),
-    Timeval (..),
+    HaskellTangoCommandData (HaskellCommandBool, HaskellCommandCString, HaskellCommandDevEnum, HaskellCommandDevState, HaskellCommandDouble, HaskellCommandFloat, HaskellCommandInt32, HaskellCommandLong64, HaskellCommandShort, HaskellCommandULong64, HaskellCommandUShort, HaskellCommandVarBool, HaskellCommandVarCString, HaskellCommandVarDevState, HaskellCommandVarDouble, HaskellCommandVarFloat, HaskellCommandVarLong, HaskellCommandVarLong64, HaskellCommandVarShort, HaskellCommandVarULong, HaskellCommandVarULong64, HaskellCommandVarUShort, HaskellCommandVoid),
+    HaskellTangoDataType (HaskellDevBoolean, HaskellDevDouble, HaskellDevEnum, HaskellDevFloat, HaskellDevInt, HaskellDevLong, HaskellDevLong64, HaskellDevShort, HaskellDevState, HaskellDevString, HaskellDevULong, HaskellDevULong64, HaskellDevUShort, HaskellDevVarBooleanArray, HaskellDevVarDoubleArray, HaskellDevVarFloatArray, HaskellDevVarLong64Array, HaskellDevVarLongArray, HaskellDevVarShortArray, HaskellDevVarStateArray, HaskellDevVarStringArray, HaskellDevVarULong64Array, HaskellDevVarULongArray, HaskellDevVarUShortArray, HaskellDevVoid),
+    HaskellTangoDevState (Alarm, Close, Disable, Extract, Fault, Init, Insert, Moving, Off, On, Open, Running, Standby, Unknown),
+    HaskellTangoPropertyData (HaskellPropStringArray),
+    HaskellTangoVarArray (HaskellTangoVarArray, varArrayLength, varArrayValues),
+    TangoAttrMemorizedType (Memorized, MemorizedWriteInit, None, NotKnown),
+    Timeval (Timeval),
     createEventCallbackWrapper,
     tango_command_inout,
     tango_command_list_query,
@@ -453,20 +454,21 @@ writeScalarAttribute ::
   m ()
 writeScalarAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newValue tangoType intract = do
   withCStringText attributeName $ \attributeNamePtr ->
-    with newValue $ \newValuePtr -> with
-      ( HaskellAttributeData
-          { dataFormat = HaskellScalar,
-            dataQuality = HaskellValid,
-            nbRead = 0,
-            name = attributeNamePtr,
-            dimX = 1,
-            dimY = 1,
-            timeStamp = Timeval 0 0,
-            dataType = tangoType,
-            tangoAttributeData = intract (HaskellTangoVarArray 1 newValuePtr)
-          }
-      )
-      \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+    with newValue $ \newValuePtr ->
+      with
+        ( HaskellAttributeData
+            { dataFormat = HaskellScalar,
+              dataQuality = HaskellValid,
+              nbRead = 0,
+              name = attributeNamePtr,
+              dimX = 1,
+              dimY = 1,
+              timeStamp = Timeval 0 0,
+              dataType = tangoType,
+              tangoAttributeData = intract (HaskellTangoVarArray 1 newValuePtr)
+            }
+        )
+        (liftIO . void . tango_write_attribute proxyPtr)
 
 writeSpectrumAttribute ::
   (MonadUnliftIO m, Storable tangoType) =>
@@ -478,20 +480,21 @@ writeSpectrumAttribute ::
   m ()
 writeSpectrumAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newValues tangoType intract =
   withCStringText attributeName $ \attributeNamePtr ->
-    withArray newValues \newValuesPtr -> with
-      ( HaskellAttributeData
-          { dataFormat = HaskellSpectrum,
-            dataQuality = HaskellValid,
-            nbRead = 0,
-            name = attributeNamePtr,
-            dimX = fromIntegral (length newValues),
-            dimY = 1,
-            timeStamp = Timeval 0 0,
-            dataType = tangoType,
-            tangoAttributeData = intract (HaskellTangoVarArray (fromIntegral (length newValues)) newValuesPtr)
-          }
-      )
-      \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+    withArray newValues \newValuesPtr ->
+      with
+        ( HaskellAttributeData
+            { dataFormat = HaskellSpectrum,
+              dataQuality = HaskellValid,
+              nbRead = 0,
+              name = attributeNamePtr,
+              dimX = fromIntegral (length newValues),
+              dimY = 1,
+              timeStamp = Timeval 0 0,
+              dataType = tangoType,
+              tangoAttributeData = intract (HaskellTangoVarArray (fromIntegral (length newValues)) newValuesPtr)
+            }
+        )
+        (liftIO . void . tango_write_attribute proxyPtr)
 
 writeImageAttribute ::
   (MonadUnliftIO m, Storable tangoType) =>
@@ -503,20 +506,21 @@ writeImageAttribute ::
   m ()
 writeImageAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newImage tangoType intract =
   withCStringText attributeName $ \attributeNamePtr ->
-    withArray (imageContent newImage) \newValuesPtr -> with
-      ( HaskellAttributeData
-          { dataFormat = HaskellImage,
-            dataQuality = HaskellValid,
-            nbRead = 0,
-            name = attributeNamePtr,
-            dimX = fromIntegral (imageDimX newImage),
-            dimY = fromIntegral (imageDimY newImage),
-            timeStamp = Timeval 0 0,
-            dataType = tangoType,
-            tangoAttributeData = intract (HaskellTangoVarArray (fromIntegral (length (imageContent newImage))) newValuesPtr)
-          }
-      )
-      \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+    withArray (imageContent newImage) \newValuesPtr ->
+      with
+        ( HaskellAttributeData
+            { dataFormat = HaskellImage,
+              dataQuality = HaskellValid,
+              nbRead = 0,
+              name = attributeNamePtr,
+              dimX = fromIntegral (imageDimX newImage),
+              dimY = fromIntegral (imageDimY newImage),
+              timeStamp = Timeval 0 0,
+              dataType = tangoType,
+              tangoAttributeData = intract (HaskellTangoVarArray (fromIntegral (length (imageContent newImage))) newValuesPtr)
+            }
+        )
+        (liftIO . void . tango_write_attribute proxyPtr)
 
 -- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
 writeIntegralAttribute :: (MonadUnliftIO m, Integral i) => DeviceProxy -> AttributeName -> i -> m ()
@@ -576,7 +580,7 @@ writeIntegralImageAttribute proxy attributeName newValues = do
     _ -> error $ "tried to write integral attribute " <> show attributeName <> " but the attribute is not an integral type"
 
 -- | Read a spectrum attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
-writeRealImageAttribute :: (MonadUnliftIO m, Real i, Fractional i) => DeviceProxy -> AttributeName -> Image i -> m ()
+writeRealImageAttribute :: (MonadUnliftIO m, Real i) => DeviceProxy -> AttributeName -> Image i -> m ()
 writeRealImageAttribute proxy attributeName newValues = do
   config <- getConfigForAttribute proxy attributeName
   case attributeInfoDataType config of
@@ -587,7 +591,7 @@ writeRealImageAttribute proxy attributeName newValues = do
     _ -> error $ "tried to write real attribute " <> show attributeName <> " but the attribute is not a real type"
 
 -- | Read an attribute irrespective of the concrete integral type. This just uses 'fromIntegral' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
-writeRealAttribute :: (MonadUnliftIO m, Fractional i, Real i) => DeviceProxy -> AttributeName -> i -> m ()
+writeRealAttribute :: (MonadUnliftIO m, Real i) => DeviceProxy -> AttributeName -> i -> m ()
 writeRealAttribute proxy attributeName newValue = do
   config <- getConfigForAttribute proxy attributeName
   case attributeInfoDataType config of
@@ -598,7 +602,7 @@ writeRealAttribute proxy attributeName newValue = do
     _ -> error $ "tried to write real attribute " <> show attributeName <> " but the attribute is not a real type"
 
 -- | Read a spectrum attribute irrespective of the concrete real type. This just uses 'realToFrac' internally to convert from any integral type. However, we do query the attribute type beforehand, making this two calls instead of just one. If you're really concerned about performance, try to find out the real type of the attribute.
-writeRealSpectrumAttribute :: (MonadUnliftIO m, Fractional i, Real i, Show i) => DeviceProxy -> AttributeName -> [i] -> m ()
+writeRealSpectrumAttribute :: (MonadUnliftIO m, Real i) => DeviceProxy -> AttributeName -> [i] -> m ()
 writeRealSpectrumAttribute proxy attributeName newValues = do
   config <- getConfigForAttribute proxy attributeName
   case attributeInfoDataType config of
@@ -784,20 +788,21 @@ writeStringSpectrumAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeNam
 writeStringSpectrumAttribute (DeviceProxy proxyPtr) (AttributeName attributeName) newValues =
   withCStringText attributeName \attributeNameC ->
     bracket (traverse (newCString . unpack) newValues) (traverse free) \stringPointerList ->
-      withArray stringPointerList \stringPointerPtr -> with
-        ( HaskellAttributeData
-            { dataFormat = HaskellSpectrum,
-              dataQuality = HaskellValid,
-              nbRead = 0,
-              name = attributeNameC,
-              dimX = fromIntegral (length newValues),
-              dimY = 1,
-              timeStamp = Timeval 0 0,
-              dataType = HaskellDevString,
-              tangoAttributeData = HaskellAttributeDataStringArray (HaskellTangoVarArray (fromIntegral (length newValues)) stringPointerPtr)
-            }
-        )
-        \newDataPtr -> liftIO $ void (tango_write_attribute proxyPtr newDataPtr)
+      withArray stringPointerList \stringPointerPtr ->
+        with
+          ( HaskellAttributeData
+              { dataFormat = HaskellSpectrum,
+                dataQuality = HaskellValid,
+                nbRead = 0,
+                name = attributeNameC,
+                dimX = fromIntegral (length newValues),
+                dimY = 1,
+                timeStamp = Timeval 0 0,
+                dataType = HaskellDevString,
+                tangoAttributeData = HaskellAttributeDataStringArray (HaskellTangoVarArray (fromIntegral (length newValues)) stringPointerPtr)
+              }
+          )
+          (liftIO . void . tango_write_attribute proxyPtr)
 
 -- | Write a string image attribute
 writeStringImageAttribute :: (MonadUnliftIO m) => DeviceProxy -> AttributeName -> Image Text -> m ()
@@ -839,14 +844,14 @@ writeLong64ImageAttribute proxy attributeName newImage =
 newtype AttributeName = AttributeName Text deriving (Show)
 
 -- | Read an attribute's value, call a function on it, and free it up again
-withReadAttribute :: (MonadIO m, MonadUnliftIO m) => DeviceProxyPtr -> CString -> (HaskellAttributeData -> m a) -> m a
+withReadAttribute :: (MonadUnliftIO m) => DeviceProxyPtr -> CString -> (HaskellAttributeData -> m a) -> m a
 withReadAttribute proxyPtr attributeNameC f = alloca \haskellAttributeDataPtr -> do
   liftIO $ checkResult (tango_read_attribute proxyPtr attributeNameC haskellAttributeDataPtr)
   haskellAttributeData <- liftIO $ peek haskellAttributeDataPtr
   finally (f haskellAttributeData) (liftIO $ tango_free_AttributeData haskellAttributeDataPtr)
 
 -- | Read an attribute's value, maybe extract something useful from it, convert that, and free the Tango data up again.
-withExtractedAttributeValue :: (MonadIO m, MonadUnliftIO m) => (HaskellAttributeData -> m (Maybe a)) -> DeviceProxy -> AttributeName -> (a -> m b) -> m b
+withExtractedAttributeValue :: (MonadUnliftIO m) => (HaskellAttributeData -> m (Maybe a)) -> DeviceProxy -> AttributeName -> (a -> m b) -> m b
 withExtractedAttributeValue extractValue (DeviceProxy proxyPtr) (AttributeName attributeNameHaskell) f =
   withCStringText attributeNameHaskell $ \attributeNameC -> withReadAttribute proxyPtr attributeNameC \haskellAttributeData -> do
     extractedValue <- extractValue haskellAttributeData
@@ -870,7 +875,7 @@ data AtLeastTwo a = AtLeastTwo a a [a]
 
 -- | Call 'withExtractedAttributeValue' to read an attribute's value (safely), extract the array within, and call a function that makes the parsed contents into something more useful.
 readAttributeSimple ::
-  (MonadIO m, Storable a, Show a, MonadUnliftIO m) =>
+  (Storable a, Show a, MonadUnliftIO m) =>
   -- | Extract a specific type of data array (usually extracting a single data type like bool, long, ...)
   (HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray a)) ->
   -- | After taking at least two elements from the array given by the previous function, call this function and turn the whole thing into something useful
@@ -970,7 +975,7 @@ readIntegralSpectrumAttribute = readAttributeSimple' extractIntegral convertGene
 readIntegralImageAttribute :: (MonadUnliftIO m, Integral i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
 readIntegralImageAttribute = readAttributeSimple' extractIntegral convertGenericImage'
 
-extractReal :: (Real i, Fractional i, MonadUnliftIO m) => HaskellTangoAttributeData -> m (Maybe [i])
+extractReal :: (Fractional i, MonadUnliftIO m) => HaskellTangoAttributeData -> m (Maybe [i])
 extractReal (HaskellAttributeDataDoubleArray a) = do
   arrayElements <- peekArray (fromIntegral (varArrayLength a)) (varArrayValues a)
   pure $ Just (realToFrac <$> arrayElements)
@@ -980,15 +985,15 @@ extractReal (HaskellAttributeDataFloatArray a) = do
 extractReal _ = pure Nothing
 
 -- | Read an attribute irrespective of the concrete real type. This just uses 'realToFrac' internally.
-readRealAttribute :: forall m i. (MonadUnliftIO m, Fractional i, Real i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
+readRealAttribute :: forall m i. (MonadUnliftIO m, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue i)
 readRealAttribute = readAttributeSimple' extractReal (convertGenericScalar id)
 
 -- | Read a spectrum attribute irrespective of the concrete real element type. This just uses 'realToFrac' internally.
-readRealSpectrumAttribute :: (MonadUnliftIO m, Real i, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
+readRealSpectrumAttribute :: (MonadUnliftIO m, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue [i])
 readRealSpectrumAttribute = readAttributeSimple' extractReal convertGenericSpectrum'
 
 -- | Read a spectrum image attribute irrespective of the concrete integral element type. This just uses 'realToFrac' internally.
-readRealImageAttribute :: (MonadUnliftIO m, Real i, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
+readRealImageAttribute :: (MonadUnliftIO m, Fractional i, Show i) => DeviceProxy -> AttributeName -> m (TangoValue (Image i))
 readRealImageAttribute = readAttributeSimple' extractReal convertGenericImage'
 
 extractBool :: HaskellTangoAttributeData -> Maybe (HaskellTangoVarArray CBool)
@@ -1214,6 +1219,7 @@ data CommandData
   | CommandBool !Bool
   | CommandShort !Int16
   | CommandUShort !Word16
+  | CommandInt32 !Int32
   | CommandInt64 !Int64
   | CommandWord64 !Word64
   | CommandFloat !Float
@@ -1255,6 +1261,7 @@ withRawCommandData CommandVoid f = with (HaskellCommandData HaskellDevVoid Haske
 withRawCommandData (CommandBool b) f = with (HaskellCommandData HaskellDevBoolean (HaskellCommandBool (boolToCBool b))) f
 withRawCommandData (CommandShort b) f = with (HaskellCommandData HaskellDevShort (HaskellCommandShort (fromIntegral b))) f
 withRawCommandData (CommandUShort b) f = with (HaskellCommandData HaskellDevUShort (HaskellCommandUShort (fromIntegral b))) f
+withRawCommandData (CommandInt32 b) f = with (HaskellCommandData HaskellDevInt (HaskellCommandInt32 (fromIntegral b))) f
 withRawCommandData (CommandInt64 b) f = with (HaskellCommandData HaskellDevShort (HaskellCommandULong64 (fromIntegral b))) f
 withRawCommandData (CommandWord64 b) f = with (HaskellCommandData HaskellDevUShort (HaskellCommandLong64 (fromIntegral b))) f
 withRawCommandData (CommandFloat b) f = with (HaskellCommandData HaskellDevFloat (HaskellCommandFloat (realToFrac b))) f
@@ -1340,6 +1347,7 @@ fromRawCommandData (HaskellCommandData {tangoCommandData}) =
     HaskellCommandFloat v -> pure $ Just $ CommandFloat $ realToFrac v
     HaskellCommandDouble v -> pure $ Just $ CommandDouble $ realToFrac v
     HaskellCommandCString v -> Just . CommandString . pack <$> peekCString v
+    HaskellCommandInt32 v -> pure $ Just $ CommandInt32 $ fromIntegral v
     HaskellCommandLong64 v -> pure $ Just $ CommandInt64 $ fromIntegral v
     HaskellCommandDevState v -> pure $ Just $ CommandState v
     HaskellCommandULong64 v -> pure $ Just $ CommandWord64 $ fromIntegral v
@@ -1753,7 +1761,7 @@ type EventCallback m =
 -- | Subscribe to an event. See 'unsubscribeEvent'
 subscribeEvent ::
   forall m.
-  (MonadIO m, MonadUnliftIO m) =>
+  (MonadUnliftIO m) =>
   DeviceProxy ->
   AttributeName ->
   EventType ->
@@ -1771,14 +1779,14 @@ subscribeEvent (DeviceProxy proxyPtr) attributeName@(AttributeName attributeName
     pure (SubscribedEvent callbackInTango eventId)
 
 -- | Unsubscribe from the event, see 'subscribeEvent'
-unsubscribeEvent :: (MonadIO m, MonadUnliftIO m) => DeviceProxy -> SubscribedEvent -> m ()
+unsubscribeEvent :: (MonadUnliftIO m) => DeviceProxy -> SubscribedEvent -> m ()
 unsubscribeEvent (DeviceProxy proxyPtr) (SubscribedEvent callbackPtr eventId) = do
   liftIO (tango_unsubscribe_event proxyPtr eventId)
   liftIO (tango_free_event_callback callbackPtr)
 
 -- | Execute an action while being subscribed to the event
 withSubscribedEvent ::
-  (MonadIO m, MonadUnliftIO m) =>
+  (MonadUnliftIO m) =>
   DeviceProxy ->
   AttributeName ->
   EventType ->
