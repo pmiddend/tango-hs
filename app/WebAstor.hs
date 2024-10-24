@@ -1,24 +1,43 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Main where
 
 import Control.Applicative (pure)
+import Data.Function ((.))
 import Data.Int (Int)
+import Data.List.NonEmpty qualified as NE
 import Data.Text (Text, isPrefixOf, pack)
-import Lucid (ToHtml (toHtml))
+import Data.Typeable (Typeable)
+import Lucid (ToHtml (toHtml, toHtmlRaw))
+import Lucid.Base (renderBS)
 import Lucid.Html5 (h1_)
+import Network.HTTP.Media qualified as M
 import Network.Wai.Handler.Warp (run)
 import Servant (Get, Proxy (Proxy), QueryParam, (:>))
-import Servant.API (JSON, Post, ReqBody)
+import Servant.API (Accept (..), JSON, MimeRender (..), Post, ReqBody)
 import Servant.API.Generic (Generic)
-import Servant.HTML.Lucid (HTML)
 import Servant.Server (Application, Server, serve)
 import System.Environment (getArgs)
 import System.IO (IO, putStrLn)
 import Prelude ()
+
+data HTML deriving stock (Typeable)
+
+instance Accept HTML where
+  contentTypes _ =
+    "text" M.// "html" M./: ("charset", "utf-8")
+      NE.:| ["text" M.// "html"]
+
+instance (ToHtml a) => MimeRender HTML a where
+  mimeRender _ = renderBS . toHtml
 
 data AstorServer = AstorServer
   { serverDevice :: Text,
@@ -33,6 +52,7 @@ newtype RefreshOutput = RefreshOutput {refreshOutputServers :: [AstorServer]} de
 
 instance ToHtml RefreshOutput where
   toHtml (RefreshOutput servers) = h1_ "foo"
+  toHtmlRaw = toHtml
 
 type AstorAPI = "servers" :> QueryParam "url" Text :> Get '[HTML] RefreshOutput
 

@@ -65,13 +65,25 @@ library
     -- otherwise: undefined reference to operator new
     extra-libraries: stdc++
 
+executable web-astor
+  main-is: WebAstor.hs
+  hs-source-dirs: app
+  build-depends:
+      base >=4.7 && <5
+    , hs-tango
+    , servant-server
+    , servant
+    , text
+    , warp
+    , lucid2
+    , http-media
+
 benchmark tango-read-test-device
   type: exitcode-stdio-1.0
   main-is: ReadTestDevice.hs
   
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  hs-source-dirs:
-      app
+  hs-source-dirs: app
   build-depends:
       base >=4.7 && <5
     , hs-tango
